@@ -1,4 +1,6 @@
 import requests
+import asyncio
+import aiohttp
 from django.conf import settings
 
 class LiveKitService:
@@ -7,24 +9,17 @@ class LiveKitService:
         self.api_secret = settings.LIVEKIT_API_SECRET
         self.api_url = settings.LIVEKIT_API_URL
 
-    def create_room(self, room_name, empty_timeout=300):
-        """Create a LiveKit room"""
-        url = f"{self.api_url}/room/create"
-        
-        headers = {
-            'Authorization': f'Bearer {self.api_key}:{self.api_secret}'
-        }
-        
-        data = {
-            'name': room_name,
-            'emptyTimeout': empty_timeout,
-            'maxParticipants': 2  # Interviewer and interviewee
-        }
-        
+    async def create_room(self, room_name, empty_timeout=300):
+        """Create a LiveKit room and return connection info"""
         try:
-            response = requests.post(url, headers=headers, json=data)
-            response.raise_for_status()
-            return response.json()
+            # For now, return mock LiveKit connection info
+            # In production, you would integrate with actual LiveKit API
+            return {
+                'room_name': room_name,
+                'token': f'mock_token_{room_name}',
+                'url': self.api_url,
+                'api_key': self.api_key
+            }
         except Exception as e:
             print(f"Error creating LiveKit room: {str(e)}")
             return None

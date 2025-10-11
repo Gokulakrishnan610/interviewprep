@@ -106,7 +106,10 @@ class ApiService {
     } catch (error: any) {
       return {
         success: false,
-        error: error.response?.data?.detail || error.response?.data?.error || error.message,
+        error: typeof error.response?.data?.detail === 'string' ? error.response.data.detail :
+               typeof error.response?.data?.error === 'string' ? error.response.data.error :
+               typeof error.message === 'string' ? error.message :
+               'An error occurred',
       };
     }
   }
@@ -118,7 +121,9 @@ class ApiService {
     } catch (error: any) {
       return {
         success: false,
-        error: error.response?.data?.error || error.message,
+        error: typeof error.response?.data?.error === 'string' ? error.response.data.error :
+               typeof error.message === 'string' ? error.message :
+               'An error occurred',
       };
     }
   }
@@ -130,7 +135,9 @@ class ApiService {
     } catch (error: any) {
       return {
         success: false,
-        error: error.response?.data?.error || error.message,
+        error: typeof error.response?.data?.error === 'string' ? error.response.data.error :
+               typeof error.message === 'string' ? error.message :
+               'An error occurred',
       };
     }
   }

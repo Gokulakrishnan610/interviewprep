@@ -56,7 +56,7 @@ const LiveKitInterview: React.FC = () => {
     const sessionId = interviewId || agentId;
     
     // First, connect to WebSocket for session management
-    const wsUrl = `ws://localhost:8000/ws/${sessionId}`;
+    const wsUrl = `ws://localhost:8001/ws/${sessionId}`;
     websocketRef.current = new WebSocket(wsUrl);
     
     websocketRef.current.onopen = () => {

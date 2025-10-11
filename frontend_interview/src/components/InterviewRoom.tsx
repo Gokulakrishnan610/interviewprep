@@ -25,13 +25,13 @@ import {
   LocalTrackPublication
 } from 'livekit-client';
 import { 
-  FaVideo, 
-  FaMicrophone, 
-  FaPhoneSlash, 
-  FaComments, 
-  FaClock, 
-  FaCog 
-} from 'react-icons/fa/index.js';
+  Video, 
+  Mic, 
+  PhoneOff, 
+  MessageCircle, 
+  Clock, 
+  Settings 
+} from 'lucide-react';
 import { apiService } from '../services/api';
 import '../styles/InterviewRoom.css';
 
@@ -49,8 +49,8 @@ const InterviewRoom: React.FC = () => {
     sender: 'user' | 'interviewer';
     timestamp: Date;
   }>>([]);
-  const [participants, setParticipants] = useState<Room['participants']>(new Map());
-  const [localParticipant, setLocalParticipant] = useState<Room['localParticipant'] | null>(null);
+  const [participants, setParticipants] = useState<Map<string, RemoteParticipant>>(new Map());
+  const [localParticipant, setLocalParticipant] = useState<LocalParticipant | null>(null);
 
   useEffect(() => {
     const joinInterview = async () => {
@@ -80,23 +80,27 @@ const InterviewRoom: React.FC = () => {
 
         // Handle room events
         newRoom
-          .on(RoomEvent.ParticipantConnected, () => {
-            console.log('A participant connected');
-            setParticipants(new Map(newRoom.participants));
+          .on(RoomEvent.ParticipantConnected, (participant: RemoteParticipant) => {
+            console.log('A participant connected:', participant.identity);
+            setParticipants(prev => new Map(prev.set(participant.identity, participant)));
           })
-          .on(RoomEvent.ParticipantDisconnected, () => {
-            console.log('A participant disconnected');
-            setParticipants(new Map(newRoom.participants));
+          .on(RoomEvent.ParticipantDisconnected, (participant: RemoteParticipant) => {
+            console.log('A participant disconnected:', participant.identity);
+            setParticipants(prev => {
+              const newMap = new Map(prev);
+              newMap.delete(participant.identity);
+              return newMap;
+            });
           })
           .on(RoomEvent.Disconnected, () => {
             setIsConnecting(false);
             setError('Disconnected from room');
           })
           .on(RoomEvent.TrackSubscribed, (track, publication, participant) => {
-            setParticipants(new Map(newRoom.participants));
+            console.log('Track subscribed:', track.kind);
           })
           .on(RoomEvent.TrackUnsubscribed, (track, publication, participant) => {
-            setParticipants(new Map(newRoom.participants));
+            console.log('Track unsubscribed:', track.kind);
           })
           .on(RoomEvent.LocalTrackPublished, () => {
             setLocalParticipant(newRoom.localParticipant);
@@ -184,7 +188,7 @@ const InterviewRoom: React.FC = () => {
     <div className="interview-container">
       <header className="interview-header">
         <div className="interview-timer">
-          <FaClock size={20} />
+          <Clock size={20} />
           <span>{formatTime(elapsedTime)}</span>
         </div>
         <div className="interview-controls">
@@ -192,25 +196,25 @@ const InterviewRoom: React.FC = () => {
             className={`control-btn ${!isVideoEnabled ? 'disabled' : ''}`} 
             onClick={toggleVideo}
           >
-            <FaVideo size={20} />
+            <Video size={20} />
           </button>
           <button 
             className={`control-btn ${!isAudioEnabled ? 'disabled' : ''}`} 
             onClick={toggleAudio}
           >
-            <FaMicrophone size={20} />
+            <Mic size={20} />
           </button>
           <button 
             className={`control-btn ${isChatVisible ? 'active' : ''}`} 
             onClick={toggleChat}
           >
-            <FaComments size={20} />
+            <MessageCircle size={20} />
           </button>
           <button className="control-btn">
-            <FaCog size={20} />
+            <Settings size={20} />
           </button>
           <button className="control-btn end-call">
-            <FaPhoneSlash size={20} />
+            <PhoneOff size={20} />
           </button>
         </div>
       </header>
@@ -219,24 +223,35 @@ const InterviewRoom: React.FC = () => {
         <div className="interviewer-view">
           <div className="video-container">
             {participants.size > 0 ? (
-              Array.from(participants.values())[0].videoTracks.size > 0 && (
-                <div className="video-wrapper">
-                  <video
-                    ref={el => {
-                      if (el && participants.size > 0) {
-                        const remoteParticipant = Array.from(participants.values())[0];
-                        const videoTrack = Array.from(remoteParticipant.videoTracks.values())[0];
-                        if (videoTrack.track) {
-                          videoTrack.track.attach(el);
+              (() => {
+                const remoteParticipant = Array.from(participants.values())[0];
+                const videoTracks = Array.from(remoteParticipant.videoTrackPublications.values());
+                const videoTrack = videoTracks.length > 0 ? videoTracks[0].track : null;
+                return videoTrack ? (
+                  <div className="video-wrapper">
+                    <video
+                      ref={el => {
+                        if (el && videoTrack) {
+                          videoTrack.attach(el);
                         }
-                      }
-                    }}
-                    autoPlay
-                    playsInline
-                    className="interviewer-video"
-                  />
-                </div>
-              )
+                      }}
+                      autoPlay
+                      playsInline
+                      className="interviewer-video"
+                    />
+                  </div>
+                ) : (
+                  <div className="avatar-container">
+                    <div className="avatar-placeholder">
+                      <img 
+                        src="/beyond-presence-avatar.png" 
+                        alt="AI Interviewer"
+                        className="interviewer-avatar"
+                      />
+                    </div>
+                  </div>
+                );
+              })()
             ) : (
               <div className="avatar-container">
                 <div className="avatar-placeholder">
@@ -253,34 +268,35 @@ const InterviewRoom: React.FC = () => {
             <h3>AI Interviewer</h3>
             <span className="status">{participants.size > 0 ? 'Online' : 'Connecting...'}</span>
           </div>
-          {participants.size > 0 && 
-           Array.from(participants.values())[0].audioTracks.size > 0 && (
-            <audio
-              ref={el => {
-                if (el && participants.size > 0) {
-                  const remoteParticipant = Array.from(participants.values())[0];
-                  const audioTrack = Array.from(remoteParticipant.audioTracks.values())[0];
-                  if (audioTrack.track) {
-                    audioTrack.track.attach(el);
+          {participants.size > 0 && (() => {
+            const remoteParticipant = Array.from(participants.values())[0];
+            const audioTracks = Array.from(remoteParticipant.audioTrackPublications.values());
+            const audioTrack = audioTracks.length > 0 ? audioTracks[0].track : null;
+            return audioTrack ? (
+              <audio
+                ref={el => {
+                  if (el && audioTrack) {
+                    audioTrack.attach(el);
                   }
-                }
-              }}
-              autoPlay
-              playsInline
-            />
-          )}
+                }}
+                autoPlay
+                playsInline
+              />
+            ) : null;
+          })()}
         </div>
 
         <div className="user-view">
           <div className="video-container">
-            {localParticipant && localParticipant.videoTracks.size > 0 ? (
+            {localParticipant && localParticipant.videoTrackPublications.size > 0 ? (
               <div className="video-wrapper">
                 <video
                   ref={el => {
                     if (el && localParticipant) {
-                      const videoTrack = Array.from(localParticipant.videoTracks.values())[0];
-                      if (videoTrack.track) {
-                        videoTrack.track.attach(el);
+                      const videoTracks = Array.from(localParticipant.videoTrackPublications.values());
+                      const videoTrack = videoTracks.length > 0 ? videoTracks[0].track : null;
+                      if (videoTrack) {
+                        videoTrack.attach(el);
                       }
                     }
                   }}

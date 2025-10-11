@@ -8,7 +8,10 @@ class CustomUserManager(BaseUserManager):
         if not email:
             raise ValueError(_('The Email must be set'))
         email = self.normalize_email(email)
-        user = self.model(email=email, username=email, **extra_fields)
+        # Set username to email if not provided
+        if 'username' not in extra_fields:
+            extra_fields['username'] = email
+        user = self.model(email=email, **extra_fields)
         if password:
             user.set_password(password)
         user.save()
@@ -27,7 +30,6 @@ class CustomUserManager(BaseUserManager):
 
 class User(AbstractUser):
     email = models.EmailField(_('email address'), unique=True)
-    username = models.CharField(max_length=255)  # Make username non-unique
     is_email_verified = models.BooleanField(default=False)
     profile_picture = models.ImageField(upload_to='profile_pictures/', null=True, blank=True)
     avatar_id = models.UUIDField(null=True, blank=True)  # BeyondPresence avatar ID
@@ -41,7 +43,6 @@ class User(AbstractUser):
 
     class Meta:
         db_table = 'users'
-        unique_together = ('email',)
 
 class UserProfile(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='profile')

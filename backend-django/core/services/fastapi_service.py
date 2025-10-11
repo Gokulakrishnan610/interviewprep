@@ -1,4 +1,6 @@
 import requests
+import asyncio
+import aiohttp
 from django.conf import settings
 
 class FastAPIService:
@@ -50,6 +52,40 @@ class FastAPIService:
             return response.json()
         except Exception as e:
             print(f"Error analyzing interview: {str(e)}")
+            return None
+
+    async def process_audio(self, session_id, audio_data, user_id):
+        """Process audio data and return AI response"""
+        try:
+            # For now, return mock AI response
+            # In production, this would call the actual FastAPI service
+            return {
+                'message': 'Thank you for your response. Can you tell me more about your experience with this technology?',
+                'audio_data': None,  # Would contain base64 audio response
+                'timestamp': '2024-01-01T00:00:00Z'
+            }
+        except Exception as e:
+            print(f"Error processing audio: {str(e)}")
+            return None
+
+    async def get_interview_feedback(self, session_id, user_id):
+        """Get interview feedback"""
+        try:
+            # For now, return mock feedback
+            # In production, this would call the actual FastAPI service
+            return {
+                'overall_score': 85,
+                'communication_score': 80,
+                'technical_score': 90,
+                'problem_solving_score': 85,
+                'confidence_score': 80,
+                'strengths': ['Good technical knowledge', 'Clear communication'],
+                'areas_for_improvement': ['More specific examples', 'Better time management'],
+                'detailed_feedback': 'Overall good performance with room for improvement in providing specific examples.',
+                'recommendations': ['Practice with more real-world scenarios', 'Work on time management']
+            }
+        except Exception as e:
+            print(f"Error getting interview feedback: {str(e)}")
             return None
 
 fastapi_service = FastAPIService()
