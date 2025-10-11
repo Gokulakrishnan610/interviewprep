@@ -67,7 +67,7 @@ const VoiceInterview: React.FC = () => {
   const initializeSession = async () => {
     try {
       const sessionId = interviewId || agentId;
-      const wsUrl = `ws://localhost:8000/ws/${sessionId}`;
+      const wsUrl = `ws://localhost:8001/ws/${sessionId}`;
       websocketRef.current = new WebSocket(wsUrl);
       
               websocketRef.current.onopen = () => {

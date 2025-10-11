@@ -66,3 +66,27 @@ class InterviewResponse(models.Model):
     
     class Meta:
         db_table = 'interview_responses'
+
+class MockInterview(models.Model):
+    session = models.ForeignKey(InterviewSession, on_delete=models.CASCADE)
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    status = models.CharField(
+        max_length=20,
+        choices=[
+            ('SCHEDULED', 'Scheduled'),
+            ('IN_PROGRESS', 'In Progress'),
+            ('COMPLETED', 'Completed'),
+            ('CANCELLED', 'Cancelled')
+        ],
+        default='SCHEDULED'
+    )
+    start_time = models.DateTimeField(auto_now_add=True)
+    end_time = models.DateTimeField(null=True, blank=True)
+    score = models.FloatField(null=True, blank=True)
+    livekit_room = models.CharField(max_length=100, blank=True, null=True)
+    feedback = models.JSONField(null=True, blank=True)
+    transcript = models.JSONField(default=list, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        db_table = 'mock_interviews'

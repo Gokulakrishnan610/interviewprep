@@ -40,7 +40,7 @@ const TextChat: React.FC = () => {
 
   const initializeSession = async () => {
     const sessionId = interviewId || agentId;
-    const wsUrl = `ws://localhost:8000/ws/${sessionId}`;
+    const wsUrl = `ws://localhost:8001/ws/${sessionId}`;
     
     websocketRef.current = new WebSocket(wsUrl);
     
