@@ -15,6 +15,7 @@ import VideoInterview from './pages/VideoInterview';
 import PracticeMode from './pages/PracticeMode';
 import Profile from './pages/Profile';
 import InterviewResults from './pages/InterviewResults';
+import PracticeInterviewRoom from './components/PracticeInterviewRoom';
 import './App.css';
 
 const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -75,7 +76,7 @@ const AppContent: React.FC = () => {
             } />
             <Route path="/practice-session/:agentId" element={
               <ProtectedRoute>
-                <VoiceInterview />
+                <PracticeInterviewRoom />
               </ProtectedRoute>
             } />
             <Route path="/profile" element={

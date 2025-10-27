@@ -55,6 +55,9 @@ const InterviewRoom: React.FC = () => {
   const [sessionId] = useState<string>(() => `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`);
   const [conversationLog, setConversationLog] = useState<Array<{speaker: string, message: string, timestamp: string}>>([]);
   const [isEndingInterview, setIsEndingInterview] = useState(false);
+  const [showManualInput, setShowManualInput] = useState(false);
+  const [manualMessage, setManualMessage] = useState('');
+  const [manualSpeaker, setManualSpeaker] = useState<'interviewer' | 'candidate'>('interviewer');
   const navigate = useNavigate();
 
   const endCall = async () => {
@@ -214,40 +217,98 @@ const InterviewRoom: React.FC = () => {
     initSession();
   }, [sessionId, effectiveId]);
 
-  // Listen for messages from Beyond Presence iframe
+  // Listen for messages from Beyond Presence iframe and browser extension
   useEffect(() => {
     const handleMessage = async (event: MessageEvent) => {
+      // Log all messages for debugging
+      console.log('📨 Received message:', {
+        origin: event.origin,
+        data: event.data
+      });
+      
+      // Handle browser extension conversation data
+      if (event.data.type === 'beyond-presence-conversation') {
+        console.log('🎉 Received conversation from browser extension!');
+        console.log(`   Messages: ${event.data.messages.length}`);
+        
+        for (const msg of event.data.messages) {
+          // Add to local conversation log
+          setConversationLog(prev => {
+            // Avoid duplicates
+            const exists = prev.some(m => m.message === msg.message && m.speaker === msg.speaker);
+            if (exists) return prev;
+            return [...prev, msg];
+          });
+          
+          // Send to backend
+          try {
+            await fetch(`http://localhost:8002/api/interview/add-message/${sessionId}`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(msg)
+            });
+          } catch (err) {
+            console.error('Error sending message to backend:', err);
+          }
+        }
+        
+        console.log('✅ All messages processed');
+        return;
+      }
+      
+      // Handle extractor status
+      if (event.data.type === 'extractor-status') {
+        console.log('📊 Browser extension status:', event.data.status);
+        return;
+      }
+      
       // Only accept messages from Beyond Presence domain
-      if (!event.origin.includes('bey.chat')) return;
+      if (!event.origin.includes('bey.chat')) {
+        return;
+      }
       
       try {
         const data = event.data;
+        console.log('✅ Processing message from Beyond Presence:', data);
         
-        // Handle conversation messages
-        if (data.type === 'conversation' || data.type === 'transcript') {
+        // Handle conversation messages - try multiple formats
+        if (data.type === 'conversation' || data.type === 'transcript' || data.type === 'message') {
           const message = {
             speaker: data.speaker || (data.role === 'agent' ? 'interviewer' : 'candidate'),
-            message: data.message || data.text || '',
+            message: data.message || data.text || data.content || '',
             timestamp: new Date().toISOString()
           };
+          
+          console.log('💬 Captured message:', message);
           
           // Add to local conversation log
           setConversationLog(prev => [...prev, message]);
           
           // Send to backend
-          await fetch(`http://localhost:8002/api/interview/add-message/${sessionId}`, {
+          const response = await fetch(`http://localhost:8002/api/interview/add-message/${sessionId}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(message)
           });
+          
+          if (response.ok) {
+            console.log('✅ Message sent to backend');
+          } else {
+            console.error('❌ Failed to send message to backend:', await response.text());
+          }
         }
       } catch (err) {
-        console.error('Error processing message from iframe:', err);
+        console.error('❌ Error processing message from iframe:', err);
       }
     };
     
     window.addEventListener('message', handleMessage);
-    return () => window.removeEventListener('message', handleMessage);
+    console.log('👂 Listening for messages from Beyond Presence iframe and browser extension');
+    
+    return () => {
+      window.removeEventListener('message', handleMessage);
+      console.log('🔇 Stopped listening for messages');
+    };
   }, [sessionId]);
 
   const formatTime = (seconds: number): string => {
@@ -287,6 +348,219 @@ const InterviewRoom: React.FC = () => {
       setIsAudioEnabled(newState);
     } catch (err) {
       console.error('Failed to toggle audio:', err);
+    }
+  };
+
+  const addManualMessage = async () => {
+    if (!manualMessage.trim()) return;
+
+    const message = {
+      speaker: manualSpeaker,
+      message: manualMessage,
+      timestamp: new Date().toISOString()
+    };
+
+    console.log('📝 Manually adding message:', message);
+
+    // Add to local conversation log
+    setConversationLog(prev => [...prev, message]);
+
+    // Send to backend
+    try {
+      const response = await fetch(`http://localhost:8002/api/interview/add-message/${sessionId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(message)
+      });
+
+      if (response.ok) {
+        console.log('✅ Message sent to backend');
+        setManualMessage('');
+      } else {
+        console.error('❌ Failed to send message:', await response.text());
+      }
+    } catch (err) {
+      console.error('❌ Error sending message:', err);
+    }
+  };
+
+  const addSampleConversation = async () => {
+    const sampleMessages = [
+      { speaker: 'interviewer', message: 'Hello! Thank you for joining us today. Can you tell me about yourself and your experience?' },
+      { speaker: 'candidate', message: 'Hi! Thank you for having me. I have 5 years of experience in software development, primarily working with React and Node.js. I\'ve built several full-stack applications and led a team of 3 developers in my current role.' },
+      { speaker: 'interviewer', message: 'That\'s great! Can you describe a challenging technical problem you\'ve solved recently?' },
+      { speaker: 'candidate', message: 'Recently, I optimized our application\'s performance by implementing lazy loading and code splitting, which reduced initial load time by 60%. I also refactored our API calls to use caching strategies, improving response times significantly.' },
+      { speaker: 'interviewer', message: 'Excellent! How do you handle conflicts within your team?' },
+      { speaker: 'candidate', message: 'I believe in open communication. When conflicts arise, I facilitate discussions where everyone can share their perspective. I focus on finding solutions that benefit the project while respecting everyone\'s input.' }
+    ];
+
+    console.log('📝 Adding sample conversation...');
+
+    for (const msg of sampleMessages) {
+      const message = {
+        ...msg,
+        timestamp: new Date().toISOString()
+      };
+
+      setConversationLog(prev => [...prev, message]);
+
+      await fetch(`http://localhost:8002/api/interview/add-message/${sessionId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(message)
+      });
+
+      // Small delay between messages
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+
+    console.log('✅ Sample conversation added');
+  };
+
+  const extractFromConversationPanel = async () => {
+    console.log('🔍 Attempting to extract from Beyond Presence conversation panel...');
+    
+    // Try to find the conversation panel in the DOM
+    const selectors = [
+      '[class*="onversation"]',
+      '[class*="Conversation"]',
+      'div[role="dialog"]',
+      'div[class*="chat"]',
+      'div[class*="Chat"]'
+    ];
+    
+    for (const selector of selectors) {
+      const panel = document.querySelector(selector);
+      if (panel) {
+        console.log(`✅ Found conversation panel with selector: ${selector}`);
+        
+        // Try to extract messages
+        const messageElements = panel.querySelectorAll('p, div[class*="message"], div[class*="text"]');
+        console.log(`Found ${messageElements.length} potential message elements`);
+        
+        let extracted = 0;
+        for (const el of Array.from(messageElements)) {
+          const text = el.textContent?.trim();
+          if (text && text.length > 10 && text.length < 500) {
+            // Try to determine speaker
+            const isPriya = text.includes('Priya') || el.closest('[class*="agent"]') || el.closest('[class*="interviewer"]');
+            
+            const message = {
+              speaker: isPriya ? 'interviewer' : 'candidate',
+              message: text,
+              timestamp: new Date().toISOString()
+            };
+            
+            // Check if not duplicate
+            const exists = conversationLog.some(m => m.message === text);
+            if (!exists) {
+              setConversationLog(prev => [...prev, message]);
+              
+              await fetch(`http://localhost:8002/api/interview/add-message/${sessionId}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(message)
+              });
+              
+              extracted++;
+            }
+          }
+        }
+        
+        console.log(`✅ Extracted ${extracted} new messages`);
+        alert(`✅ Extracted ${extracted} messages from conversation panel!`);
+        return;
+      }
+    }
+    
+    console.log('⚠️ Could not find conversation panel');
+    alert('⚠️ Could not find conversation panel. Please use manual entry.');
+  };
+
+  const extractUsingOCR = async () => {
+    try {
+      console.log('📸 Starting OCR extraction...');
+      alert('📸 Please select the conversation panel area when prompted');
+      
+      // @ts-ignore - Dynamic import
+      const html2canvas = (await import('html2canvas')).default;
+      // @ts-ignore - Dynamic import
+      const Tesseract = await import('tesseract.js');
+      
+      // Capture the entire screen
+      const canvas = await html2canvas(document.body, {
+        allowTaint: true,
+        useCORS: true,
+        logging: false
+      });
+      
+      console.log('📸 Screenshot captured, processing with OCR...');
+      
+      // Convert canvas to blob
+      const blob = await new Promise<Blob>((resolve) => {
+        canvas.toBlob((b) => resolve(b!), 'image/png');
+      });
+      
+      // Run OCR
+      const worker = await Tesseract.createWorker();
+      await worker.loadLanguage('eng');
+      await worker.initialize('eng');
+      
+      const { data: { text } } = await worker.recognize(blob);
+      await worker.terminate();
+      
+      console.log('✅ OCR completed');
+      console.log('Extracted text:', text);
+      
+      // Parse the text to extract messages
+      const lines = text.split('\n').filter(line => line.trim().length > 10);
+      
+      let extracted = 0;
+      for (const line of lines) {
+        const trimmedLine = line.trim();
+        
+        // Skip if too short or looks like UI text
+        if (trimmedLine.length < 15 || 
+            trimmedLine.includes('Conversation') || 
+            trimmedLine.includes('Send a message') ||
+            trimmedLine.includes('Online')) {
+          continue;
+        }
+        
+        // Determine speaker
+        const isPriya = trimmedLine.includes('Priya') || 
+                       lines.indexOf(line) % 2 === 0; // Alternate speakers
+        
+        const message = {
+          speaker: isPriya ? 'interviewer' : 'candidate',
+          message: trimmedLine,
+          timestamp: new Date().toISOString()
+        };
+        
+        // Check if not duplicate
+        const exists = conversationLog.some(m => 
+          m.message.toLowerCase().includes(trimmedLine.toLowerCase().substring(0, 30))
+        );
+        
+        if (!exists) {
+          setConversationLog(prev => [...prev, message]);
+          
+          await fetch(`http://localhost:8002/api/interview/add-message/${sessionId}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(message)
+          });
+          
+          extracted++;
+        }
+      }
+      
+      console.log(`✅ OCR extracted ${extracted} messages`);
+      alert(`✅ OCR extracted ${extracted} messages!\n\nPlease review and adjust if needed.`);
+      
+    } catch (error) {
+      console.error('❌ OCR extraction failed:', error);
+      alert('❌ OCR extraction failed. Please use manual entry.');
     }
   };
 
@@ -349,6 +623,172 @@ const InterviewRoom: React.FC = () => {
           ))}
         </div>
       </div>
+
+      {/* Manual Conversation Capture Panel */}
+      <div style={{
+        position: 'fixed',
+        bottom: '20px',
+        right: '20px',
+        background: 'white',
+        padding: '20px',
+        borderRadius: '12px',
+        boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+        zIndex: 1000,
+        maxWidth: '400px',
+        display: showManualInput ? 'block' : 'none'
+      }}>
+        <h3 style={{ margin: '0 0 15px 0', fontSize: '16px', fontWeight: 'bold' }}>
+          Conversation Capture
+        </h3>
+        
+        <div style={{ marginBottom: '15px' }}>
+          <div style={{ marginBottom: '10px', fontSize: '14px', color: '#666' }}>
+            Messages captured: {conversationLog.length}
+          </div>
+          
+          <select 
+            value={manualSpeaker}
+            onChange={(e) => setManualSpeaker(e.target.value as 'interviewer' | 'candidate')}
+            style={{
+              width: '100%',
+              padding: '8px',
+              marginBottom: '10px',
+              border: '1px solid #ddd',
+              borderRadius: '6px',
+              fontSize: '14px'
+            }}
+          >
+            <option value="interviewer">Interviewer</option>
+            <option value="candidate">Candidate</option>
+          </select>
+          
+          <textarea
+            value={manualMessage}
+            onChange={(e) => setManualMessage(e.target.value)}
+            placeholder="Enter message..."
+            style={{
+              width: '100%',
+              padding: '8px',
+              border: '1px solid #ddd',
+              borderRadius: '6px',
+              fontSize: '14px',
+              minHeight: '80px',
+              resize: 'vertical',
+              fontFamily: 'inherit'
+            }}
+          />
+        </div>
+        
+        <div style={{ display: 'flex', gap: '10px', flexDirection: 'column' }}>
+          <button
+            onClick={addManualMessage}
+            style={{
+              padding: '10px',
+              background: '#4CAF50',
+              color: 'white',
+              border: 'none',
+              borderRadius: '6px',
+              cursor: 'pointer',
+              fontSize: '14px',
+              fontWeight: '500'
+            }}
+          >
+            Add Message
+          </button>
+          
+          <button
+            onClick={extractUsingOCR}
+            style={{
+              padding: '10px',
+              background: '#9C27B0',
+              color: 'white',
+              border: 'none',
+              borderRadius: '6px',
+              cursor: 'pointer',
+              fontSize: '14px',
+              fontWeight: '500'
+            }}
+          >
+            📸 Extract Using OCR (Screenshot)
+          </button>
+          
+          <button
+            onClick={extractFromConversationPanel}
+            style={{
+              padding: '10px',
+              background: '#FF9800',
+              color: 'white',
+              border: 'none',
+              borderRadius: '6px',
+              cursor: 'pointer',
+              fontSize: '14px',
+              fontWeight: '500'
+            }}
+          >
+            🔍 Extract from DOM
+          </button>
+          
+          <button
+            onClick={addSampleConversation}
+            style={{
+              padding: '10px',
+              background: '#2196F3',
+              color: 'white',
+              border: 'none',
+              borderRadius: '6px',
+              cursor: 'pointer',
+              fontSize: '14px',
+              fontWeight: '500'
+            }}
+          >
+            Add Sample Conversation (Test)
+          </button>
+          
+          <button
+            onClick={() => setShowManualInput(false)}
+            style={{
+              padding: '10px',
+              background: '#f0f0f0',
+              color: '#333',
+              border: 'none',
+              borderRadius: '6px',
+              cursor: 'pointer',
+              fontSize: '14px',
+              fontWeight: '500'
+            }}
+          >
+            Close
+          </button>
+        </div>
+      </div>
+
+      {/* Floating Action Button to Open Panel */}
+      {!showManualInput && (
+        <button
+          onClick={() => setShowManualInput(true)}
+          style={{
+            position: 'fixed',
+            bottom: '20px',
+            right: '20px',
+            width: '60px',
+            height: '60px',
+            borderRadius: '50%',
+            background: '#4CAF50',
+            color: 'white',
+            border: 'none',
+            boxShadow: '0 4px 12px rgba(0,0,0,0.2)',
+            cursor: 'pointer',
+            fontSize: '24px',
+            zIndex: 999,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center'
+          }}
+          title="Manual Conversation Capture"
+        >
+          💬
+        </button>
+      )}
     </div>
   );
 };
