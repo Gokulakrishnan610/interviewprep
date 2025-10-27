@@ -14,6 +14,7 @@ import InterviewRoom from './components/InterviewRoom';
 import VideoInterview from './pages/VideoInterview';
 import PracticeMode from './pages/PracticeMode';
 import Profile from './pages/Profile';
+import InterviewResults from './pages/InterviewResults';
 import './App.css';
 
 const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -80,6 +81,11 @@ const AppContent: React.FC = () => {
             <Route path="/profile" element={
               <ProtectedRoute>
                 <Profile />
+              </ProtectedRoute>
+            } />
+            <Route path="/interview-results" element={
+              <ProtectedRoute>
+                <InterviewResults />
               </ProtectedRoute>
             } />
           </Routes>

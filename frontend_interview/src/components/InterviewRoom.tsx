@@ -52,18 +52,48 @@ const InterviewRoom: React.FC = () => {
   }>>([]);
   const [participants, setParticipants] = useState<Map<string, RemoteParticipant>>(new Map());
   const [localParticipant, setLocalParticipant] = useState<LocalParticipant | null>(null);
+  const [sessionId] = useState<string>(() => `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`);
+  const [conversationLog, setConversationLog] = useState<Array<{speaker: string, message: string, timestamp: string}>>([]);
+  const [isEndingInterview, setIsEndingInterview] = useState(false);
   const navigate = useNavigate();
 
-  const endCall = () => {
+  const endCall = async () => {
+    if (isEndingInterview) return;
+    
+    setIsEndingInterview(true);
+    
     try {
+      // End the interview session and get scores
+      const response = await fetch(`http://localhost:8002/api/interview/end-session/${sessionId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        console.log('Interview scores:', data.scores);
+        
+        // Navigate to results page with scores
+        navigate('/interview-results', { 
+          state: { 
+            sessionId, 
+            scores: data.scores,
+            conversation: conversationLog,
+            duration: elapsedTime
+          } 
+        });
+      } else {
+        throw new Error('Failed to get interview scores');
+      }
+    } catch (err) {
+      console.error('Failed to end interview:', err);
+      // Navigate to dashboard on error
+      navigate('/dashboard');
+    } finally {
       if (room) {
         room.disconnect();
         setRoom(null);
       }
-    } catch (err) {
-      console.error('Failed to end call:', err);
-    } finally {
-      navigate('/dashboard');
     }
   };
 
@@ -159,6 +189,67 @@ const InterviewRoom: React.FC = () => {
     return () => clearInterval(timer);
   }, []);
 
+  // Initialize interview session
+  useEffect(() => {
+    const initSession = async () => {
+      try {
+        const response = await fetch('http://localhost:8002/api/interview/start-session', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            session_id: sessionId,
+            user_id: 'user_' + effectiveId,
+            interview_type: 'technical'
+          })
+        });
+        
+        if (response.ok) {
+          console.log('Interview session started:', sessionId);
+        }
+      } catch (err) {
+        console.error('Failed to start interview session:', err);
+      }
+    };
+    
+    initSession();
+  }, [sessionId, effectiveId]);
+
+  // Listen for messages from Beyond Presence iframe
+  useEffect(() => {
+    const handleMessage = async (event: MessageEvent) => {
+      // Only accept messages from Beyond Presence domain
+      if (!event.origin.includes('bey.chat')) return;
+      
+      try {
+        const data = event.data;
+        
+        // Handle conversation messages
+        if (data.type === 'conversation' || data.type === 'transcript') {
+          const message = {
+            speaker: data.speaker || (data.role === 'agent' ? 'interviewer' : 'candidate'),
+            message: data.message || data.text || '',
+            timestamp: new Date().toISOString()
+          };
+          
+          // Add to local conversation log
+          setConversationLog(prev => [...prev, message]);
+          
+          // Send to backend
+          await fetch(`http://localhost:8002/api/interview/add-message/${sessionId}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(message)
+          });
+        }
+      } catch (err) {
+        console.error('Error processing message from iframe:', err);
+      }
+    };
+    
+    window.addEventListener('message', handleMessage);
+    return () => window.removeEventListener('message', handleMessage);
+  }, [sessionId]);
+
   const formatTime = (seconds: number): string => {
     const minutes = Math.floor(seconds / 60);
     const remainingSeconds = seconds % 60;
@@ -208,40 +299,9 @@ const InterviewRoom: React.FC = () => {
         </div>
         <div className="interview-controls">
           <button 
-            className={`control-btn ${!isVideoEnabled ? 'disabled' : ''}`} 
-            onClick={toggleVideo}
-            disabled={isConnecting || !room}
-            title={isVideoEnabled ? 'Turn off camera' : 'Turn on camera'}
-          >
-            <Video size={20} />
-          </button>
-          <button 
-            className={`control-btn ${!isAudioEnabled ? 'disabled' : ''}`} 
-            onClick={toggleAudio}
-            disabled={isConnecting || !room}
-            title={isAudioEnabled ? 'Mute microphone' : 'Unmute microphone'}
-          >
-            <Mic size={20} />
-          </button>
-          <button 
-            className={`control-btn ${isChatVisible ? 'active' : ''}`} 
-            onClick={toggleChat}
-            disabled={isConnecting}
-            title="Toggle chat"
-          >
-            <MessageCircle size={20} />
-          </button>
-          <button 
-            className="control-btn"
-            disabled={true}
-            title="Settings (coming soon)"
-          >
-            <Settings size={20} />
-          </button>
-          <button 
             className="control-btn end-call" 
             onClick={endCall}
-            title="End call"
+            title="Exit Interview"
           >
             <PhoneOff size={20} />
           </button>
@@ -250,102 +310,26 @@ const InterviewRoom: React.FC = () => {
 
       <div className="interview-body">
         <div className="interviewer-view">
-          <div className="video-container">
-            {participants.size > 0 ? (
-              (() => {
-                const remoteParticipant = Array.from(participants.values())[0];
-                const videoTracks = Array.from(remoteParticipant.videoTrackPublications.values());
-                const videoTrack = videoTracks.length > 0 ? videoTracks[0].track : null;
-                return videoTrack ? (
-                  <div className="video-wrapper">
-                    <video
-                      ref={el => {
-                        if (el && videoTrack) {
-                          videoTrack.attach(el);
-                        }
-                      }}
-                      autoPlay
-                      playsInline
-                      className="interviewer-video"
-                    />
-                  </div>
-                ) : (
-                  <div className="avatar-container">
-                    <div className="avatar-placeholder">
-                      <img 
-                        src="/beyond-presence-avatar.png" 
-                        alt="AI Interviewer"
-                        className="interviewer-avatar"
-                      />
-                    </div>
-                  </div>
-                );
-              })()
-            ) : (
-              <div className="avatar-container">
-                <div className="avatar-placeholder">
-                  <img 
-                    src="/beyond-presence-avatar.png" 
-                    alt="AI Interviewer"
-                    className="interviewer-avatar"
-                  />
-                </div>
-              </div>
-            )}
+          {/* Beyond Presence Agent Container */}
+          <div id="agent-container" style={{ width: '100%', height: '100%', position: 'relative' }}>
+            <iframe 
+              src="https://bey.chat/bbe33449-03e7-43ae-b6d5-5c8bf138f52a" 
+              style={{
+                width: '100%',
+                height: '100%',
+                border: 'none',
+                position: 'absolute',
+                top: 0,
+                left: 0
+              }}
+              allow="camera; microphone; fullscreen"
+              allowFullScreen
+              title="Beyond Presence AI Interviewer"
+            />
           </div>
           <div className="interviewer-info">
             <h3>AI Interviewer</h3>
-            <span className="status">{participants.size > 0 ? 'Online' : 'Connecting...'}</span>
-          </div>
-          {participants.size > 0 && (() => {
-            const remoteParticipant = Array.from(participants.values())[0];
-            const audioTracks = Array.from(remoteParticipant.audioTrackPublications.values());
-            const audioTrack = audioTracks.length > 0 ? audioTracks[0].track : null;
-            return audioTrack ? (
-              <audio
-                ref={el => {
-                  if (el && audioTrack) {
-                    audioTrack.attach(el);
-                  }
-                }}
-                autoPlay
-                playsInline
-              />
-            ) : null;
-          })()}
-        </div>
-
-        <div className="user-view">
-          <div className="video-container">
-            {localParticipant && localParticipant.videoTrackPublications.size > 0 ? (
-              <div className="video-wrapper">
-                <video
-                  ref={el => {
-                    if (el && localParticipant) {
-                      const videoTracks = Array.from(localParticipant.videoTrackPublications.values());
-                      const videoTrack = videoTracks.length > 0 ? videoTracks[0].track : null;
-                      if (videoTrack) {
-                        videoTrack.attach(el);
-                      }
-                    }
-                  }}
-                  autoPlay
-                  playsInline
-                  muted
-                  className="user-video"
-                />
-              </div>
-            ) : (
-              <div className="avatar-container">
-                <div className="avatar-placeholder">
-                  <img 
-                    src="/user-avatar.png" 
-                    alt="You"
-                    className="user-avatar"
-                  />
-                </div>
-              </div>
-            )}
+            <span className="status">Online</span>
           </div>
         </div>
       </div>
