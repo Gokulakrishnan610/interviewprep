@@ -13,7 +13,7 @@ ai_service = AIService()
 # Store active connections
 active_connections: Dict[str, WebSocket] = {}
 
-@router.websocket("/ws/{session_id}")
+@router.websocket("/{session_id}")
 async def websocket_endpoint(websocket: WebSocket, session_id: str):
     await websocket.accept()
     active_connections[session_id] = websocket

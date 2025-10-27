@@ -52,13 +52,30 @@ class InterviewSessionViewSet(viewsets.ModelViewSet):
             interview_type=interview.interview_type,
             difficulty_level=interview.difficulty_level
         )
-        
-        # Create or update LiveKit room token if needed
-        if not interview.room_token:
-            interview.room_token = self.generate_room_token(interview.room_name)
-            
+
+        # Always create a fresh LiveKit room and token
+        new_room_name = f"interview-{uuid.uuid4().hex[:12]}"
+        interview.room_name = new_room_name
+        interview.room_token = self.generate_room_token(new_room_name)
+
+        # Ensure the specified Beyond Presence agent is used
+        interview.avatar_id = '694c83e2-8895-4a98-bd16-56332ca3f449'
+
         interview.status = 'in_progress'
         interview.save()
+
+        # Trigger Beyond Presence avatar to join LiveKit room
+        try:
+            livekit_url = getattr(settings, 'LIVEKIT_API_URL', None)
+            fastapi_service.start_avatar_call(
+                avatar_id=str(interview.avatar_id),
+                livekit_token=interview.room_token,
+                livekit_url=livekit_url,
+                text="Hello, let's begin the interview."
+            )
+        except Exception as e:
+            # Non-fatal: log and continue
+            print(f"Failed to start avatar call: {str(e)}")
         
         # Return session data with room details
         return Response({

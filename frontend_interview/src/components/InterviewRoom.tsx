@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import '@livekit/components-styles';
 import {
   useRoomContext,
@@ -36,7 +36,8 @@ import { apiService } from '../services/api';
 import '../styles/InterviewRoom.css';
 
 const InterviewRoom: React.FC = () => {
-  const { id } = useParams<{ id: string }>();
+  const { id, interviewId } = useParams<{ id?: string; interviewId?: string }>();
+  const effectiveId = id || interviewId || '';
   const [room, setRoom] = useState<Room | null>(null);
   const [isConnecting, setIsConnecting] = useState(true);
   const [elapsedTime, setElapsedTime] = useState(0);
@@ -51,6 +52,20 @@ const InterviewRoom: React.FC = () => {
   }>>([]);
   const [participants, setParticipants] = useState<Map<string, RemoteParticipant>>(new Map());
   const [localParticipant, setLocalParticipant] = useState<LocalParticipant | null>(null);
+  const navigate = useNavigate();
+
+  const endCall = () => {
+    try {
+      if (room) {
+        room.disconnect();
+        setRoom(null);
+      }
+    } catch (err) {
+      console.error('Failed to end call:', err);
+    } finally {
+      navigate('/dashboard');
+    }
+  };
 
   useEffect(() => {
     const joinInterview = async () => {
@@ -59,7 +74,7 @@ const InterviewRoom: React.FC = () => {
         setError(null);
 
         // Get room connection details from backend
-        const response = await apiService.startInterview(id!);
+        const response = await apiService.startInterview(effectiveId);
         if (!response.success || !response.data) {
           throw new Error(response.error || 'Failed to get room connection details');
         }
@@ -123,7 +138,7 @@ const InterviewRoom: React.FC = () => {
       }
     };
 
-    if (id) {
+    if (effectiveId) {
       joinInterview();
     }
 
@@ -155,30 +170,30 @@ const InterviewRoom: React.FC = () => {
   };
 
   const toggleVideo = async () => {
-    if (!room) return;
+    if (!room || isConnecting) {
+      console.warn('Room not ready yet');
+      return;
+    }
     
     try {
-      if (isVideoEnabled) {
-        await room.localParticipant.setCameraEnabled(false);
-      } else {
-        await room.localParticipant.setCameraEnabled(true);
-      }
-      setIsVideoEnabled(!isVideoEnabled);
+      const newState = !isVideoEnabled;
+      await room.localParticipant.setCameraEnabled(newState);
+      setIsVideoEnabled(newState);
     } catch (err) {
       console.error('Failed to toggle video:', err);
     }
   };
 
   const toggleAudio = async () => {
-    if (!room) return;
+    if (!room || isConnecting) {
+      console.warn('Room not ready yet');
+      return;
+    }
     
     try {
-      if (isAudioEnabled) {
-        await room.localParticipant.setMicrophoneEnabled(false);
-      } else {
-        await room.localParticipant.setMicrophoneEnabled(true);
-      }
-      setIsAudioEnabled(!isAudioEnabled);
+      const newState = !isAudioEnabled;
+      await room.localParticipant.setMicrophoneEnabled(newState);
+      setIsAudioEnabled(newState);
     } catch (err) {
       console.error('Failed to toggle audio:', err);
     }
@@ -195,25 +210,39 @@ const InterviewRoom: React.FC = () => {
           <button 
             className={`control-btn ${!isVideoEnabled ? 'disabled' : ''}`} 
             onClick={toggleVideo}
+            disabled={isConnecting || !room}
+            title={isVideoEnabled ? 'Turn off camera' : 'Turn on camera'}
           >
             <Video size={20} />
           </button>
           <button 
             className={`control-btn ${!isAudioEnabled ? 'disabled' : ''}`} 
             onClick={toggleAudio}
+            disabled={isConnecting || !room}
+            title={isAudioEnabled ? 'Mute microphone' : 'Unmute microphone'}
           >
             <Mic size={20} />
           </button>
           <button 
             className={`control-btn ${isChatVisible ? 'active' : ''}`} 
             onClick={toggleChat}
+            disabled={isConnecting}
+            title="Toggle chat"
           >
             <MessageCircle size={20} />
           </button>
-          <button className="control-btn">
+          <button 
+            className="control-btn"
+            disabled={true}
+            title="Settings (coming soon)"
+          >
             <Settings size={20} />
           </button>
-          <button className="control-btn end-call">
+          <button 
+            className="control-btn end-call" 
+            onClick={endCall}
+            title="End call"
+          >
             <PhoneOff size={20} />
           </button>
         </div>

@@ -32,7 +32,7 @@ ALLOWED_HOSTS = ['*']  # Update this in production
 FRONTEND_URL = 'http://localhost:3000'
 
 # FastAPI Integration
-FASTAPI_URL = 'http://localhost:8002'
+FASTAPI_URL = 'http://localhost:8001'
 
 # LiveKit Integration
 LIVEKIT_API_KEY = 'APIabMqmQ8P4aRx'
