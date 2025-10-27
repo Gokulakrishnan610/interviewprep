@@ -103,6 +103,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   useEffect(() => {
     const checkAuth = async () => {
       const token = localStorage.getItem('token');
+      const refreshToken = localStorage.getItem('refreshToken');
       
       if (token) {
         try {
@@ -114,13 +115,63 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
               payload: { user: response.data, token },
             });
           } else {
-            // Token is invalid
+            // Try to refresh token
+            if (refreshToken) {
+              try {
+                const refreshResponse = await apiService.refreshToken(refreshToken);
+                if (refreshResponse.success && refreshResponse.data) {
+                  const { access: newToken, refresh: newRefreshToken } = refreshResponse.data;
+                  localStorage.setItem('token', newToken);
+                  localStorage.setItem('refreshToken', newRefreshToken || refreshToken);
+                  
+                  // Try getCurrentUser again with new token
+                  const userResponse = await apiService.getCurrentUser();
+                  if (userResponse.success && userResponse.data) {
+                    dispatch({
+                      type: 'AUTH_SUCCESS',
+                      payload: { user: userResponse.data, token: newToken },
+                    });
+                    return;
+                  }
+                }
+              } catch (refreshError) {
+                console.error('Token refresh failed:', refreshError);
+              }
+            }
+            
+            // Token refresh failed or no refresh token
             localStorage.removeItem('token');
+            localStorage.removeItem('refreshToken');
             localStorage.removeItem('user');
-            dispatch({ type: 'AUTH_FAILURE', payload: 'Invalid token' });
+            dispatch({ type: 'AUTH_FAILURE', payload: 'Session expired' });
           }
         } catch (error) {
+          // Try to refresh token on network error too
+          if (refreshToken) {
+            try {
+              const refreshResponse = await apiService.refreshToken(refreshToken);
+              if (refreshResponse.success && refreshResponse.data) {
+                const { access: newToken, refresh: newRefreshToken } = refreshResponse.data;
+                localStorage.setItem('token', newToken);
+                localStorage.setItem('refreshToken', newRefreshToken || refreshToken);
+                
+                // Try getCurrentUser again with new token
+                const userResponse = await apiService.getCurrentUser();
+                if (userResponse.success && userResponse.data) {
+                  dispatch({
+                    type: 'AUTH_SUCCESS',
+                    payload: { user: userResponse.data, token: newToken },
+                  });
+                  return;
+                }
+              }
+            } catch (refreshError) {
+              console.error('Token refresh failed:', refreshError);
+            }
+          }
+          
           localStorage.removeItem('token');
+          localStorage.removeItem('refreshToken');
           localStorage.removeItem('user');
           dispatch({ type: 'AUTH_FAILURE', payload: 'Authentication failed' });
         }
@@ -141,10 +192,11 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       const response = await apiService.login(email, password);
       
       if (response.success && response.data) {
-        const { token, user } = response.data;
+        const { access_token: token, refresh_token, user } = response.data;
         
-        // Store token and user in localStorage
+        // Store token, refresh token and user in localStorage
         localStorage.setItem('token', token);
+        localStorage.setItem('refreshToken', refresh_token);
         localStorage.setItem('user', JSON.stringify(user));
         
         dispatch({
@@ -182,10 +234,11 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       const response = await apiService.register(userData);
       
       if (response.success && response.data) {
-        const { token, user } = response.data;
+        const { access_token: token, refresh_token, user } = response.data;
         
-        // Store token and user in localStorage
+        // Store token, refresh token and user in localStorage
         localStorage.setItem('token', token);
+        localStorage.setItem('refreshToken', refresh_token);
         localStorage.setItem('user', JSON.stringify(user));
         
         dispatch({

@@ -32,7 +32,7 @@ ALLOWED_HOSTS = ['*']  # Update this in production
 FRONTEND_URL = 'http://localhost:3000'
 
 # FastAPI Integration
-FASTAPI_URL = 'http://localhost:8002'
+FASTAPI_URL = 'http://localhost:8001'
 
 # LiveKit Integration
 LIVEKIT_API_KEY = 'APIabMqmQ8P4aRx'
@@ -211,8 +211,8 @@ REST_FRAMEWORK = {
 
 # JWT Settings
 SIMPLE_JWT = {
-    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=60),
-    'REFRESH_TOKEN_LIFETIME': timedelta(days=1),
+    'ACCESS_TOKEN_LIFETIME': timedelta(hours=24),  # Extended for development
+    'REFRESH_TOKEN_LIFETIME': timedelta(days=7),
     'ROTATE_REFRESH_TOKENS': True,
     'BLACKLIST_AFTER_ROTATION': True,
     'ALGORITHM': 'HS256',

@@ -52,4 +52,21 @@ class FastAPIService:
             print(f"Error analyzing interview: {str(e)}")
             return None
 
+    def start_agent(self, room_name: str, agent_type: str = "interview", agent_id: str = None):
+        """Start a LiveKit agent for a room"""
+        url = f"{self.base_url}/agents/start"
+        data = {
+            'room_name': room_name,
+            'agent_type': agent_type,
+            'agent_id': agent_id
+        }
+        
+        try:
+            response = requests.post(url, json=data)
+            response.raise_for_status()
+            return response.json()
+        except Exception as e:
+            print(f"Error starting agent: {str(e)}")
+            return None
+
 fastapi_service = FastAPIService()

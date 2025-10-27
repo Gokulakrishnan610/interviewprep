@@ -20,64 +20,84 @@ interface PaginatedResponse<T> {
 
 // API service class
 class ApiService {
-  private api: AxiosInstance;
-  private baseURL: string;
+  private authApi: AxiosInstance;
+  private aiApi: AxiosInstance;
+  private authBaseURL: string;
+  private aiBaseURL: string;
 
   constructor() {
-    this.baseURL = process.env.REACT_APP_API_URL || 'http://localhost:8000/api';
+    this.authBaseURL = 'http://localhost:8000/api';  // Django for auth
+    this.aiBaseURL = 'http://localhost:8001';        // FastAPI for AI features
     
-    this.api = axios.create({
-      baseURL: this.baseURL,
+    // Auth API (Django)
+    this.authApi = axios.create({
+      baseURL: this.authBaseURL,
       headers: {
         'Content-Type': 'application/json',
       }
     });
 
-    // Add response interceptor to handle errors
-    this.api.interceptors.response.use(
-      (response) => response,
-      (error) => {
-        console.error('API Error:', error.response?.data || error.message);
-        return Promise.reject(error);
+    // AI API (FastAPI)
+    this.aiApi = axios.create({
+      baseURL: this.aiBaseURL,
+      headers: {
+        'Content-Type': 'application/json',
       }
-    );
+    });
 
-    // Request interceptor to add auth token
-    this.api.interceptors.request.use(
-      (config) => {
-        const token = localStorage.getItem('token');
-        if (token) {
-          config.headers.Authorization = `Bearer ${token}`;
+    // Add response interceptor to handle errors (for both APIs)
+    [this.authApi, this.aiApi].forEach(apiInstance => {
+      apiInstance.interceptors.response.use(
+        (response: AxiosResponse) => response,
+        (error: any) => {
+          console.error('API Error:', error.response?.data || error.message);
+          return Promise.reject(error);
         }
-        return config;
-      },
-      (error) => {
-        return Promise.reject(error);
-      }
-    );
+      );
 
-    // Response interceptor to handle errors
-    this.api.interceptors.response.use(
-      (response: AxiosResponse) => {
-        return response;
-      },
-      (error) => {
-        if (error.response?.status === 401) {
-          // Token expired or invalid
-          localStorage.removeItem('token');
-          localStorage.removeItem('user');
-          window.location.href = '/login';
+      // Request interceptor to add auth token
+      apiInstance.interceptors.request.use(
+        (config: any) => {
+          const token = localStorage.getItem('token');
+          if (token) {
+            config.headers.Authorization = `Bearer ${token}`;
+          }
+          return config;
+        },
+        (error: any) => {
+          return Promise.reject(error);
         }
-        return Promise.reject(error);
-      }
-    );
+      );
+    });
+
+    // Response interceptor to handle auth errors (for both APIs)
+    [this.authApi, this.aiApi].forEach(apiInstance => {
+      apiInstance.interceptors.response.use(
+        (response: AxiosResponse) => {
+          return response;
+        },
+        (error: any) => {
+          if (error.response?.status === 401) {
+            // Token expired or invalid
+            localStorage.removeItem('token');
+            localStorage.removeItem('user');
+            window.location.href = '/login';
+          }
+          return Promise.reject(error);
+        }
+      );
+    });
   }
 
   // Generic request methods
-  async get<T>(url: string, params?: any): Promise<ApiResponse<T>> {
+  async get<T>(url: string, params?: any, useAuthApi: boolean = false): Promise<ApiResponse<T>> {
     try {
-      const response = await this.api.get(url, { params });
-      return response.data;
+      const apiInstance = useAuthApi ? this.authApi : this.aiApi;
+      const response = await apiInstance.get(url, { params });
+      return {
+        success: true,
+        data: response.data
+      };
     } catch (error: any) {
       return {
         success: false,
@@ -86,23 +106,14 @@ class ApiService {
     }
   }
 
-  async post<T>(url: string, data?: any): Promise<ApiResponse<T>> {
+  async post<T>(url: string, data?: any, useAuthApi: boolean = false): Promise<ApiResponse<T>> {
     try {
-      const response = await this.api.post(url, data);
-      
-      // Handle backend response format for auth endpoints
-      if (url.includes('/auth/register') || url.includes('/auth/login')) {
-        const { access_token, token_type, user } = response.data;
-        return {
-          success: true,
-          data: {
-            token: access_token,
-            user: user
-          } as T
-        };
-      }
-      
-      return response.data;
+      const apiInstance = useAuthApi ? this.authApi : this.aiApi;
+      const response = await apiInstance.post(url, data);
+      return {
+        success: true,
+        data: response.data
+      };
     } catch (error: any) {
       return {
         success: false,
@@ -111,10 +122,14 @@ class ApiService {
     }
   }
 
-  async put<T>(url: string, data?: any): Promise<ApiResponse<T>> {
+  async put<T>(url: string, data?: any, useAuthApi: boolean = false): Promise<ApiResponse<T>> {
     try {
-      const response = await this.api.put(url, data);
-      return response.data;
+      const apiInstance = useAuthApi ? this.authApi : this.aiApi;
+      const response = await apiInstance.put(url, data);
+      return {
+        success: true,
+        data: response.data
+      };
     } catch (error: any) {
       return {
         success: false,
@@ -123,10 +138,14 @@ class ApiService {
     }
   }
 
-  async delete<T>(url: string): Promise<ApiResponse<T>> {
+  async delete<T>(url: string, useAuthApi: boolean = false): Promise<ApiResponse<T>> {
     try {
-      const response = await this.api.delete(url);
-      return response.data;
+      const apiInstance = useAuthApi ? this.authApi : this.aiApi;
+      const response = await apiInstance.delete(url);
+      return {
+        success: true,
+        data: response.data
+      };
     } catch (error: any) {
       return {
         success: false,
@@ -135,9 +154,9 @@ class ApiService {
     }
   }
 
-  // Auth methods
+  // Auth methods (use Django)
   async login(email: string, password: string): Promise<ApiResponse<any>> {
-    return this.post('/auth/login/', { email, password });
+    return this.post('/auth/login/', { email, password }, true);
   }
 
   async register(userData: {
@@ -155,7 +174,7 @@ class ApiService {
         username: userData.email.trim()  // Use email as username
       };
       
-      const response = await this.api.post('/auth/register/', formattedData);
+      const response = await this.authApi.post('/auth/register/', formattedData);
       
       if (response.data.access_token) {
         localStorage.setItem('token', response.data.access_token);
@@ -175,31 +194,35 @@ class ApiService {
   }
 
   async verifyEmail(token: string): Promise<ApiResponse<any>> {
-    return this.post('/auth/verify-email', { token });
+    return this.post('/auth/verify-email', { token }, true);
   }
 
   async resendVerification(email: string): Promise<ApiResponse<any>> {
-    return this.post('/auth/resend-verification', { email });
+    return this.post('/auth/resend-verification', { email }, true);
   }
 
   async getCurrentUser(): Promise<ApiResponse<any>> {
-    return this.get('/auth/me');
+    return this.get('/auth/me/', {}, true);
   }
 
-  // User methods
+  async refreshToken(refreshToken: string): Promise<ApiResponse<any>> {
+    return this.post('/auth/token/refresh/', { refresh: refreshToken }, true);
+  }
+
+  // User methods (use Django)
   async getUserProfile(): Promise<ApiResponse<any>> {
-    return this.get('/users/profile');
+    return this.get('/users/profile', {}, true);
   }
 
   async updateUserProfile(data: { first_name?: string; last_name?: string; email?: string; bio?: string; skills?: string[] }): Promise<ApiResponse<any>> {
-    return this.put('/users/profile', data);
+    return this.put('/users/profile', data, true);
   }
 
   async getUserStats(): Promise<ApiResponse<any>> {
-    return this.get('/users/stats');
+    return this.get('/users/stats', {}, true);
   }
 
-  // Session methods
+  // Session methods (use Django)
   async getSessions(params?: {
     page?: number;
     limit?: number;
@@ -207,78 +230,78 @@ class ApiService {
     difficulty?: string;
     search?: string;
   }): Promise<ApiResponse<PaginatedResponse<any>>> {
-    return this.get('/sessions', params);
+    return this.get('/sessions', params, true);
   }
 
   async getSession(id: string): Promise<ApiResponse<any>> {
-    return this.get(`/sessions/${id}`);
+    return this.get(`/sessions/${id}`, {}, true);
   }
 
   async createSession(sessionData: any): Promise<ApiResponse<any>> {
-    return this.post('/sessions', sessionData);
+    return this.post('/sessions', sessionData, true);
   }
 
   async updateSession(id: string, data: any): Promise<ApiResponse<any>> {
-    return this.put(`/sessions/${id}`, data);
+    return this.put(`/sessions/${id}`, data, true);
   }
 
   async deleteSession(id: string): Promise<ApiResponse<any>> {
-    return this.delete(`/sessions/${id}`);
+    return this.delete(`/sessions/${id}`, true);
   }
 
   async getSessionStats(id: string): Promise<ApiResponse<any>> {
-    return this.get(`/sessions/${id}/stats`);
+    return this.get(`/sessions/${id}/stats`, {}, true);
   }
 
-  // Agent methods
+  // Agent methods (use FastAPI)
   async getAgents(params?: {
     category?: string;
     isActive?: boolean;
     page?: number;
     limit?: number;
   }): Promise<ApiResponse<PaginatedResponse<any>>> {
-    return this.get('/agents', params);
+    return this.get('/agents', params, false);
   }
 
   async getAgent(id: string): Promise<ApiResponse<any>> {
-    return this.get(`/agents/${id}`);
+    return this.get(`/agents/${id}`, {}, false);
   }
 
   async createAgent(agentData: any): Promise<ApiResponse<any>> {
-    return this.post('/agents', agentData);
+    return this.post('/agents', agentData, false);
   }
 
   async updateAgent(id: string, data: any): Promise<ApiResponse<any>> {
-    return this.put(`/agents/${id}`, data);
+    return this.put(`/agents/${id}`, data, false);
   }
 
   async deleteAgent(id: string): Promise<ApiResponse<any>> {
-    return this.delete(`/agents/${id}`);
+    return this.delete(`/agents/${id}`, false);
   }
 
   async getAgentStats(id: string): Promise<ApiResponse<any>> {
-    return this.get(`/agents/${id}/stats`);
+    return this.get(`/agents/${id}/stats`, {}, false);
   }
 
-  // Interview methods
+  // Interview methods (use Django)
   async getInterviews(): Promise<ApiResponse<any[]>> {
-    return this.get('/interviews');
+    return this.get('/interviews', {}, true);
   }
 
   async createInterview(data: { sessionId: string; startTime?: Date }): Promise<ApiResponse<any>> {
-    return this.post('/interviews', data);
+    return this.post('/interviews', data, true);
   }
 
   async getInterview(id: string): Promise<ApiResponse<any>> {
-    return this.get(`/interviews/${id}`);
+    return this.get(`/interviews/${id}`, {}, true);
   }
 
   async updateInterviewStatus(id: string, status: string, score?: number): Promise<ApiResponse<any>> {
-    return this.put(`/interviews/${id}/status`, { status, score });
+    return this.put(`/interviews/${id}/status`, { status, score }, true);
   }
 
   async addInterviewFeedback(id: string, feedbackData: any): Promise<ApiResponse<any>> {
-    return this.post(`/interviews/${id}/feedback`, feedbackData);
+    return this.post(`/interviews/${id}/feedback`, feedbackData, true);
   }
 
   async addInterviewTranscript(id: string, transcriptData: {
@@ -286,12 +309,12 @@ class ApiService {
     message: string;
     confidence?: number;
   }): Promise<ApiResponse<any>> {
-    return this.post(`/interviews/${id}/transcript`, transcriptData);
+    return this.post(`/interviews/${id}/transcript`, transcriptData, true);
   }
 
-  // Practice methods
+  // Practice methods (use FastAPI)
   async getPracticeSessions(): Promise<ApiResponse<any[]>> {
-    return this.get('/practice');
+    return this.get('/practice', {}, false);
   }
 
   async createPracticeSession(data: {
@@ -299,15 +322,15 @@ class ApiService {
     category: string;
     duration?: number;
   }): Promise<ApiResponse<any>> {
-    return this.post('/practice', data);
+    return this.post('/practice', data, false);
   }
 
   async getPracticeSession(id: string): Promise<ApiResponse<any>> {
-    return this.get(`/practice/${id}`);
+    return this.get(`/practice/${id}`, {}, false);
   }
 
   async updatePracticeSessionStatus(id: string, status: string): Promise<ApiResponse<any>> {
-    return this.put(`/practice/${id}/status`, { status });
+    return this.put(`/practice/${id}/status`, { status }, false);
   }
 
   async addPracticeTranscript(id: string, transcriptData: {
@@ -315,13 +338,13 @@ class ApiService {
     message: string;
     confidence?: number;
   }): Promise<ApiResponse<any>> {
-    return this.post(`/practice/${id}/transcript`, transcriptData);
+    return this.post(`/practice/${id}/transcript`, transcriptData, false);
   }
 
-  // LiveKit methods
+  // LiveKit methods (use FastAPI)
   async startInterview(id: string): Promise<ApiResponse<{ token: string; room: string }>> {
     try {
-      const response = await this.post<{ token: string; room: string }>(`/interviews/${id}/start`);
+      const response = await this.post<{ token: string; room: string }>(`/interviews/${id}/start`, {}, false);
       return response;
     } catch (error: any) {
       return {
@@ -329,6 +352,11 @@ class ApiService {
         error: error.response?.data?.error || error.message
       };
     }
+  }
+
+  // Practice session methods (use FastAPI)
+  async startPracticeSession(agentId: string): Promise<ApiResponse<any>> {
+    return this.post('/agents/start_practice', { agent_id: agentId }, false);
   }
 }
 

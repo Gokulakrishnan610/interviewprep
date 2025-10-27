@@ -28,13 +28,13 @@ class Settings(BaseSettings):
     ]
     
     # LiveKit
-    LIVEKIT_URL: str = "wss://your-livekit-instance.livekit.cloud"
-    LIVEKIT_API_KEY: str = "your-api-key"
-    LIVEKIT_API_SECRET: str = "your-api-secret"
+    LIVEKIT_URL: str = "wss://interviewapp-86itzjcd.livekit.cloud"
+    LIVEKIT_API_KEY: str = "APIabMqmQ8P4aRx"
+    LIVEKIT_API_SECRET: str = "BrhWkwtTeBmYqeMIXEOqpnQFhG3Vvkfz3bffOezzKJQK"
     
     # AI Services
     GOOGLE_API_KEY: str = "your-google-api-key"
-    DEEPGRAM_API_KEY: str = "your-deepgram-api-key"
+    DEEPGRAM_API_KEY: str = "d0f20e29bcccbf7b5ba7cf6b777f4e7e822e37b2"
     GOOGLE_CLOUD_PROJECT_ID: str = "your-google-cloud-project-id"
     GOOGLE_CLOUD_CREDENTIALS_FILE: str = "path/to/credentials.json"
     

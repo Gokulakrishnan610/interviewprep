@@ -8,7 +8,13 @@ from app.services.audio import AudioService
 from app.services.ai import AIService
 
 router = APIRouter()
-audio_service = AudioService()
+
+def get_audio_service():
+    try:
+        return AudioService()
+    except Exception as e:
+        print(f"Audio service not available: {e}")
+        return None
 
 def get_ai_service():
     return AIService()
@@ -29,6 +35,9 @@ class InterviewFeedbackRequest(BaseModel):
 @router.post("/transcribe")
 async def transcribe_audio(request: TranscribeRequest):
     try:
+        audio_service = get_audio_service()
+        if not audio_service:
+            raise HTTPException(status_code=503, detail="Audio service not available")
         transcript = await audio_service.transcribe_audio(
             request.audio_url,
             request.language_code
@@ -40,6 +49,9 @@ async def transcribe_audio(request: TranscribeRequest):
 @router.post("/tts")
 async def text_to_speech(request: TTSRequest):
     try:
+        audio_service = get_audio_service()
+        if not audio_service:
+            raise HTTPException(status_code=503, detail="Audio service not available")
         audio_content = await audio_service.text_to_speech(
             request.text,
             request.voice_name,

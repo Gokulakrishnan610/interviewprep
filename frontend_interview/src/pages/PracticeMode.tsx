@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { 
   Mic, 
   Users, 
@@ -8,10 +9,12 @@ import {
   Play,
   Settings
 } from 'lucide-react';
+import { apiService } from '../services/api';
 
 const PracticeMode: React.FC = () => {
   const [selectedAgent, setSelectedAgent] = useState<string | null>(null);
   const [selectedCategory, setSelectedCategory] = useState('all');
+  const navigate = useNavigate();
 
   const aiAgents = [
     {
@@ -76,10 +79,28 @@ const PracticeMode: React.FC = () => {
     );
   });
 
-  const startPracticeSession = (agentId: string) => {
+  const startPracticeSession = async (agentId: string) => {
     setSelectedAgent(agentId);
-    // Navigate to practice session with the selected agent
-    window.location.href = `/practice-session/${agentId}`;
+    
+    try {
+      // Start practice session via API
+      const response = await apiService.startPracticeSession(agentId);
+      
+      if (response.success && response.data) {
+        const { room_name, room_token } = response.data;
+        
+        // Navigate to interview with LiveKit info
+        navigate(`/interview/${room_name}?token=${room_token}&type=practice&agent=${agentId}`);
+      } else {
+        console.error('Failed to start practice session:', response.error);
+        // Fallback to direct navigation
+        navigate(`/practice-session/${agentId}`);
+      }
+    } catch (error) {
+      console.error('Error starting practice session:', error);
+      // Fallback to direct navigation
+      navigate(`/practice-session/${agentId}`);
+    }
   };
 
   return (

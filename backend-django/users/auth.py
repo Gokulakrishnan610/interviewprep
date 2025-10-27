@@ -27,19 +27,19 @@ def register_view(request):
         
         serializer = UserSerializer(data=data)
         if serializer.is_valid():
-            # Save user but mark as inactive until email verification
-            user = serializer.save(is_active=False, avatar_id=data['avatar_id'])
+            # Save user as active (temporarily skip email verification)
+            user = serializer.save(is_active=True, avatar_id=data['avatar_id'])
             
-            # Send verification email
-            email_sent = send_verification_email(user)
+            # Send verification email (optional)
+            # email_sent = send_verification_email(user)
             
             refresh = RefreshToken.for_user(user)
             response_data = {
                 'user': serializer.data,
                 'access_token': str(refresh.access_token),
                 'refresh_token': str(refresh),
-                'message': 'Registration successful. Please check your email to verify your account.',
-                'email_sent': email_sent
+                'message': 'Registration successful.',
+                # 'email_sent': email_sent
             }
             return Response(response_data, status=status.HTTP_201_CREATED)
         return Response(
@@ -62,12 +62,7 @@ def login_view(request):
     user = authenticate(username=email, password=password) or authenticate(email=email, password=password)
     
     if user is not None:
-        if not user.is_active:
-            return Response({
-                'error': 'Please verify your email address before logging in.',
-                'requires_verification': True
-            }, status=status.HTTP_401_UNAUTHORIZED)
-        
+        # Removed is_active check for now
         refresh = RefreshToken.for_user(user)
         return Response({
             'user': UserSerializer(user).data,

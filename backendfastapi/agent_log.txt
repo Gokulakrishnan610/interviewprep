@@ -1,0 +1,63 @@
+Failed to start subprocess for room test-interview-room-7: [WinError 2] The system cannot find the file specified
+Failed to start subprocess for room test-interview-room-8: [WinError 2] The system cannot find the file specified
+Failed to start subprocess for room test-interview-room-9: [WinError 2] The system cannot find the file specified
+Room: test-interview-room-10, PID: 27012
+STDERR: Traceback (most recent call last):
+  File "X:\interviewprep\backendfastapi\app\agents\interview_agent.py", line 13, in <module>
+    from app.core.config import settings
+ModuleNotFoundError: No module named 'app'
+
+---
+Room: test-interview-room-11, PID: 27228
+STDERR: X:\interviewprep\.venv\Scripts\python.exe: can't open file 'X:\\interviewprep\\backendfastapi\\app\\app\\agents\\interview_agent.py': [Errno 2] No such file or directory
+
+---
+Room: test-interview-room-12, PID: 20088
+STDERR: X:\interviewprep\.venv\Scripts\python.exe: can't open file 'X:\\interviewprep\\backendfastapi\\app\\app\\agents\\interview_agent.py': [Errno 2] No such file or directory
+
+---
+Failed to start subprocess for room test-interview-room-13: [WinError 267] The directory name is invalid
+Failed to start subprocess for room test-interview-room-14: [WinError 267] The directory name is invalid
+Room: test-interview-room-15, PID: 20256
+STDOUT: Connecting directly to room: test-interview-room-15
+Agent connected to room: test-interview-room-15
+Starting interview agent: default for room: test-interview-room-15
+
+STDERR: error putting to queue: Event loop is closed
+error putting to queue: Event loop is closed
+error putting to queue: Event loop is closed
+
+---
+Room: practice-9b86f9baf6ec, PID: 29528
+STDOUT: Connecting directly to room: practice-9b86f9baf6ec
+Agent connected to room: practice-9b86f9baf6ec
+Starting interview agent: 1 for room: practice-9b86f9baf6ec
+
+STDERR: error putting to queue: Event loop is closed
+
+---
+Room: practice-fba509aa, PID: 35656
+STDOUT: Connecting directly to room: practice-fba509aa
+Agent connected to room: practice-fba509aa
+Starting interview agent: test-agent for room: practice-fba509aa
+
+STDERR: error putting to queue: Event loop is closed
+
+---
+Room: practice-47bfa8c2, PID: 24308
+STDOUT: Connecting directly to room: practice-47bfa8c2
+Agent connected to room: practice-47bfa8c2
+Starting interview agent: test-agent for room: practice-47bfa8c2
+
+STDERR: error putting to queue: Event loop is closed
+error putting to queue: Event loop is closed
+
+---
+Room: practice-08266138, PID: 12788
+STDOUT: Connecting directly to room: practice-08266138
+Agent connected to room: practice-08266138
+Starting interview agent: 2 for room: practice-08266138
+
+STDERR: error putting to queue: Event loop is closed
+
+---

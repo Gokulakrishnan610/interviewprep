@@ -53,4 +53,14 @@ class FastAPIService:
         response.raise_for_status()
         return response.json()
 
+    def start_agent(self, room_name: str, agent_type: str = "interview", agent_id: Optional[str] = None) -> dict:
+        endpoint = f"{self.base_url}/agents/start"
+        response = requests.post(endpoint, json={
+            "room_name": room_name,
+            "agent_type": agent_type,
+            "agent_id": agent_id
+        })
+        response.raise_for_status()
+        return response.json()
+
 fastapi_service = FastAPIService()

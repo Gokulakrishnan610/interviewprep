@@ -95,7 +95,37 @@ class InterviewSessionViewSet(viewsets.ModelViewSet):
             confidence_score=response_data.get('confidence_score')
         )
         
-        return Response(InterviewResponseSerializer(response).data)
+    @action(detail=False, methods=['post'])
+    def start_practice(self, request):
+        """Start a practice session with AI agent"""
+        agent_id = request.data.get('agent_id', 'default')
+        
+        # Generate unique room name for practice
+        room_name = f"practice-{uuid.uuid4().hex[:12]}"
+        
+        # Generate LiveKit room token
+        room_token = self.generate_room_token(room_name)
+        
+        # Start the agent via FastAPI
+        try:
+            agent_response = fastapi_service.start_agent(
+                room_name=room_name,
+                agent_type='interview',
+                agent_id=agent_id
+            )
+        except Exception as e:
+            return Response(
+                {'error': f'Failed to start agent: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+        
+        return Response({
+            'room_name': room_name,
+            'room_token': room_token,
+            'agent_id': agent_id,
+            'session_type': 'practice',
+            'agent_status': agent_response.get('status', 'unknown')
+        })
     
     @action(detail=True, methods=['post'])
     def complete(self, request, pk=None):
