@@ -18,13 +18,17 @@ app.add_middleware(
 )
 
 # Import and include routers
-from app.api.routes import ai_router, audio_router, avatar_router, auth, realtime
+from app.api.routes import ai_router, audio_router, avatar_router, auth, realtime, interview_router, practice_router, beyond_presence_router, livekit_router
 
 app.include_router(auth.router, prefix="/auth", tags=["Authentication"])
 app.include_router(ai_router.router, prefix="/ai", tags=["AI Services"])
 app.include_router(audio_router.router, prefix="/audio", tags=["Audio Processing"])
 app.include_router(avatar_router.router, prefix="/avatar", tags=["Avatar Services"])
 app.include_router(realtime.router, prefix="/ws", tags=["WebSocket"])
+app.include_router(interview_router.router, prefix="/api/interview", tags=["Interview"])
+app.include_router(practice_router.router, prefix="/api/practice", tags=["Practice Mode"])
+app.include_router(beyond_presence_router.router, prefix="/api/beyond-presence", tags=["Beyond Presence"])
+app.include_router(livekit_router.router, prefix="/api/livekit", tags=["LiveKit"])
 
 @app.get("/")
 async def root():

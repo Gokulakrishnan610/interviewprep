@@ -1,0 +1,31 @@
+{
+  "manifest_version": 3,
+  "name": "Beyond Presence Conversation Extractor",
+  "version": "1.0.0",
+  "description": "Extracts conversation data from Beyond Presence interviews",
+  "permissions": [
+    "activeTab",
+    "scripting"
+  ],
+  "host_permissions": [
+    "*://bey.chat/*",
+    "http://localhost/*",
+    "http://127.0.0.1/*"
+  ],
+  "content_scripts": [
+    {
+      "matches": ["*://bey.chat/*"],
+      "js": ["beyondPresenceExtractor.js"],
+      "run_at": "document_end",
+      "all_frames": true
+    },
+    {
+      "matches": ["http://localhost/*", "http://127.0.0.1/*"],
+      "js": ["parentListener.js"],
+      "run_at": "document_end"
+    }
+  ],
+  "action": {
+    "default_popup": "popup.html"
+  }
+}

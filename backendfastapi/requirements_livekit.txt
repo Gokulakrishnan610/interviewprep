@@ -1,0 +1,21 @@
+# LiveKit Practice Agent Requirements
+# Install with: pip install -r requirements_livekit.txt
+
+# Core LiveKit
+livekit>=0.10.0
+livekit-agents>=0.8.0
+
+# AI/ML Models
+google-generativeai>=0.3.0
+
+# LiveKit Plugins
+livekit-plugins-deepgram>=0.6.0
+livekit-plugins-elevenlabs>=0.6.0
+livekit-plugins-bey>=0.1.0
+
+# Optional: Better VAD
+# livekit-plugins-silero>=0.6.0
+
+# Utilities
+python-dotenv>=1.0.0
+aiohttp>=3.9.0

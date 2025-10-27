@@ -9,7 +9,7 @@
 #             raise ValueError("GEMINI_API_KEY not configured")
             
 #         genai.configure(api_key=config.GEMINI_API_KEY)
-#         self.model = genai.GenerativeModel('gemini-pro')
+#         self.model = genai.GenerativeModel('gemini-pr')
 #         self.chat = None
 #         self.interview_context = """
 #         You are an AI interviewer for a tech company. Your role is to conduct professional interviews.
@@ -82,7 +82,7 @@ class GeminiService:
         genai.configure(api_key=api_key)
         
         self.genai = genai
-        self.model = genai.GenerativeModel('gemini-pro')
+        self.model = genai.GenerativeModel('gemini-2.5-flash')
         self.chat = None
         self.interview_context = """
         You are an AI interviewer for a tech company. Your role is to conduct professional interviews.

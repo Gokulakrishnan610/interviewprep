@@ -41,18 +41,23 @@ class InterviewScore(BaseModel):
 # In-memory storage (replace with database in production)
 interview_sessions = {}
 
+class StartSessionRequest(BaseModel):
+    session_id: str
+    user_id: str
+    interview_type: str
+
 @router.post("/start-session")
-async def start_interview_session(session_id: str, user_id: str, interview_type: str):
+async def start_interview_session(request: StartSessionRequest):
     """Start a new interview session"""
-    interview_sessions[session_id] = {
-        "session_id": session_id,
-        "user_id": user_id,
-        "interview_type": interview_type,
+    interview_sessions[request.session_id] = {
+        "session_id": request.session_id,
+        "user_id": request.user_id,
+        "interview_type": request.interview_type,
         "conversation": [],
         "started_at": datetime.now().isoformat(),
         "status": "in_progress"
     }
-    return {"success": True, "session_id": session_id}
+    return {"success": True, "session_id": request.session_id}
 
 @router.post("/add-message/{session_id}")
 async def add_conversation_message(session_id: str, message: ConversationMessage):

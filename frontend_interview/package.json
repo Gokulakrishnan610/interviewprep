@@ -21,6 +21,7 @@
     "axios": "^1.11.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "html2canvas": "^1.4.1",
     "livekit-client": "^2.15.8",
     "lucide-react": "^0.535.0",
     "react": "^19.1.1",
@@ -31,6 +32,7 @@
     "socket.io-client": "^4.8.1",
     "start": "^5.1.0",
     "tailwind-merge": "^3.3.1",
+    "tesseract.js": "^6.0.1",
     "typescript": "^4.9.5",
     "web-vitals": "^2.1.4"
   },

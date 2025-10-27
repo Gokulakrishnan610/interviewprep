@@ -28,19 +28,19 @@ class Settings(BaseSettings):
     ]
     
     # LiveKit
-    LIVEKIT_URL: str = "wss://your-livekit-instance.livekit.cloud"
-    LIVEKIT_API_KEY: str = "your-api-key"
-    LIVEKIT_API_SECRET: str = "your-api-secret"
+    LIVEKIT_URL: str = "wss://interviewapp-86itzjcd.livekit.cloud"
+    LIVEKIT_API_KEY: str = "APIabMqmQ8P4aRx"
+    LIVEKIT_API_SECRET: str = "BrhWkwtTeBmYqeMIXEOqpnQFhG3Vvkfz3bffOezzKJQK"
     
     # AI Services
-    GOOGLE_API_KEY: str = "your-google-api-key"
-    DEEPGRAM_API_KEY: str = "your-deepgram-api-key"
+    GOOGLE_API_KEY: str = "AIzaSyDpi8YH0O1sCzoUH6CvebacwhQ1c_pSAqM"
+    DEEPGRAM_API_KEY: str = "d0f20e29bcccbf7b5ba7cf6b777f4e7e822e37b2"
     GOOGLE_CLOUD_PROJECT_ID: str = "your-google-cloud-project-id"
     GOOGLE_CLOUD_CREDENTIALS_FILE: str = "path/to/credentials.json"
     
     # Beyond Presence
-    BEYOND_PRESENCE_API_KEY: str = "your-beyond-presence-api-key"
-    BEYOND_PRESENCE_API_URL: str = "https://api.beyondpresence.com/v1"
+    BEYOND_PRESENCE_API_KEY: str = "sk-s5MCPaFRud95-L5GtYuk0Alo-393BL6l58vUr3BqVjY"
+    BEYOND_PRESENCE_API_URL: str = "https://api.bey.dev/v1"
     
     # Hugging Face
     HUGGING_FACE_API_KEY: str = "your-huggingface-api-key"
@@ -52,9 +52,31 @@ class Settings(BaseSettings):
     UPLOAD_DIR: str = "uploads"
     MAX_FILE_SIZE: int = 10 * 1024 * 1024  # 10MB
     
+    # Gemini API
+    GEMINI_API_KEY: str = "AIzaSyDpi8YH0O1sCzoUH6CvebacwhQ1c_pSAqM"
+    GEMINI_MODEL: str = "gemini-2.5-flash"
+    GEMINI_TEMPERATURE: float = 0.8
+    
+    # ElevenLabs API
+    ELEVENLABS_API_KEY: str = "sk_2f8bf57e574bf7374e2c5fc6f71678a0352367eb307f3cc3"
+    ELEVENLABS_VOICE_ID: str = "21m00Tcm4TlvDq8ikWAM"
+    ELEVENLABS_MODEL: str = "eleven_monolingual_v1"
+    
+    # Beyond Presence
+    BEY_AVATAR_ID: str = "694c83e2-8895-4a98-bd16-56332ca3f449"
+    BEY_API_KEY: str = "sk-s5MCPaFRud95-L5GtYuk0Alo-393BL6l58vUr3BqVjY"
+    
+    # Deepgram
+    DEEPGRAM_MODEL: str = "nova-2"
+    DEEPGRAM_LANGUAGE: str = "en-US"
+    
+    # Mode
+    MODE: str = "production"
+    
     class Config:
         env_file = ".env"
         case_sensitive = True
+        extra = "allow"  # Allow extra fields from .env
 
 settings = Settings()
 

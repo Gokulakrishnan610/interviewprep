@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { 
   Mic, 
   Users, 
@@ -10,13 +11,14 @@ import {
 } from 'lucide-react';
 
 const PracticeMode: React.FC = () => {
+  const navigate = useNavigate();
   const [selectedAgent, setSelectedAgent] = useState<string | null>(null);
   const [selectedCategory, setSelectedCategory] = useState('all');
 
   const aiAgents = [
     {
       id: '1',
-      name: 'Sarah Chen',
+      name: 'Priya',
       role: 'Senior Software Engineer',
       personality: 'Friendly and encouraging, focuses on fundamentals',
       expertise: ['Algorithms', 'Data Structures', 'System Design'],
@@ -78,8 +80,8 @@ const PracticeMode: React.FC = () => {
 
   const startPracticeSession = (agentId: string) => {
     setSelectedAgent(agentId);
-    // Navigate to practice session with the selected agent
-    window.location.href = `/practice-session/${agentId}`;
+    // Navigate to practice session with the selected agent using React Router
+    navigate(`/practice-session/${agentId}`);
   };
 
   return (
