@@ -244,7 +244,7 @@ const InterviewSessions: React.FC = () => {
 
               {/* Action Button */}
               <Link
-                to={`/interview/${session.id}`}
+                to={`/video-interview/${session.id}`}
                 className="w-full bg-primary-600 text-white py-2 px-4 rounded-md text-sm font-medium hover:bg-primary-700 transition-colors flex items-center justify-center"
               >
                 <Play className="w-4 h-4 mr-2" />

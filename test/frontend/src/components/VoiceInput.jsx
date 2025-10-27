@@ -1,15 +1,16 @@
 import React, { useState } from 'react'
 import { useDeepgramStream } from '../hooks/useDeepgramStream'
 import { getGeminiResponse } from '../api/gemini'
-import { sendToAvatar } from '../api/livekit'
 
 const VoiceInput = ({ setMessages }) => {
   const [isListening, setIsListening] = useState(false)
-  const [status, setStatus] = useState('Click to start speaking')
+  const [status, setStatus] = useState('Click microphone to start speaking')
+  const [lastTranscript, setLastTranscript] = useState('')
 
   const handleTranscript = async (transcript) => {
-    if (!transcript.trim()) return
+    if (!transcript.trim() || transcript === lastTranscript) return
 
+    setLastTranscript(transcript)
     setStatus(`Heard: "${transcript}"`)
     
     // Add user message
@@ -17,6 +18,8 @@ const VoiceInput = ({ setMessages }) => {
     setMessages(prev => [...prev, userMessage])
 
     try {
+      setStatus('Thinking...')
+      
       // Get Gemini response
       const reply = await getGeminiResponse(transcript)
       
@@ -26,23 +29,34 @@ const VoiceInput = ({ setMessages }) => {
 
       // Make avatar speak
       if (window.avatar) {
-        await sendToAvatar('default', reply)
+        await window.avatar.speak(reply)
       }
       
       setStatus('Response received! Click to speak again.')
+      setLastTranscript('') // Reset for next interaction
     } catch (error) {
       console.error('Error processing voice input:', error)
       setStatus('Error processing request. Click to try again.')
+      
+      // Add error message to chat
+      const errorMessage = { 
+        sender: 'bot', 
+        text: 'Sorry, I encountered an error processing your request. Please try again.', 
+        timestamp: new Date(),
+        isError: true 
+      }
+      setMessages(prev => [...prev, errorMessage])
     }
   }
 
-  const { startListening, stopListening } = useDeepgramStream(handleTranscript)
+  const { startListening, stopListening, isListening: deepgramListening, error } = useDeepgramStream(handleTranscript)
 
   const toggleListening = () => {
     if (isListening) {
       stopListening()
       setIsListening(false)
-      setStatus('Click to start speaking')
+      setStatus('Click microphone to start speaking')
+      setLastTranscript('')
     } else {
       startListening()
       setIsListening(true)
@@ -55,10 +69,24 @@ const VoiceInput = ({ setMessages }) => {
       <button 
         className={`voice-btn ${isListening ? 'listening' : ''}`}
         onClick={toggleListening}
+        disabled={!!error && !isListening}
       >
         {isListening ? '🛑 Stop Listening' : '🎤 Start Voice Chat'}
       </button>
-      <div className="status">{status}</div>
+      <div className="status">
+        {error ? (
+          <span style={{ color: '#ff6b6b' }}>
+            {error} - Use text chat instead
+          </span>
+        ) : (
+          status
+        )}
+      </div>
+      {error && (
+        <div style={{ fontSize: '0.8rem', color: '#6c757d', marginTop: '5px' }}>
+          Make sure the backend is running on port 8000
+        </div>
+      )}
     </div>
   )
 }

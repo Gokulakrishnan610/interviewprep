@@ -49,18 +49,31 @@
   align-items: center;
   justify-content: center;
   transition: all 0.2s ease;
+  position: relative;
+  z-index: 10;
 }
 
-.control-btn:hover {
+.control-btn:hover:not(:disabled) {
   background-color: rgba(255, 255, 255, 0.3);
+  transform: scale(1.05);
+}
+
+.control-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.control-btn:active:not(:disabled) {
+  transform: scale(0.95);
 }
 
 .control-btn.end-call {
   background-color: #dc3545;
 }
 
-.control-btn.end-call:hover {
+.control-btn.end-call:hover:not(:disabled) {
   background-color: #bd2130;
+  transform: scale(1.1);
 }
 
 .interview-body {
@@ -139,6 +152,10 @@
 
 .control-btn.disabled {
   background-color: #dc3545;
+}
+
+.control-btn.active {
+  background-color: rgba(0, 122, 255, 0.8);
 }
 
 .chat-overlay {

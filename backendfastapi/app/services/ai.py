@@ -7,7 +7,7 @@ class AIService:
         genai.configure(api_key=settings.GOOGLE_API_KEY)
         
         # Set up the Gemini model with configuration
-        model = genai.GenerativeModel('gemini-pro')
+        model = genai.GenerativeModel('gemini-2.5-flash')
         generation_config = genai.types.GenerationConfig(
             temperature=0.7,
             max_output_tokens=1024,

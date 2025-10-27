@@ -54,6 +54,23 @@ class FastAPIService:
             print(f"Error analyzing interview: {str(e)}")
             return None
 
+    def start_avatar_call(self, avatar_id: str, livekit_token: str, livekit_url: str = None, text: str = None):
+        """Ask FastAPI to start a Beyond Presence avatar call into LiveKit"""
+        url = f"{self.base_url}/avatar/start-call"
+        payload = {
+            'avatar_id': avatar_id,
+            'livekit_token': livekit_token,
+            'livekit_url': livekit_url,
+            'text': text or "Hello, let's begin the interview."
+        }
+        try:
+            response = requests.post(url, json=payload, timeout=20)
+            response.raise_for_status()
+            return response.json()
+        except Exception as e:
+            print(f"Error starting avatar call: {str(e)}")
+            return None
+
     async def process_audio(self, session_id, audio_data, user_id):
         """Process audio data and return AI response"""
         try:

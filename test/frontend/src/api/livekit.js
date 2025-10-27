@@ -1,4 +1,4 @@
-// LiveKit client compatibility layer
+// LiveKit client v2 compatibility with better error handling
 let LiveKit = null;
 
 // Function to initialize LiveKit client
@@ -6,10 +6,9 @@ const initLiveKit = async () => {
   if (LiveKit) return LiveKit;
   
   try {
-    // Try importing livekit-client
     const module = await import('livekit-client');
     LiveKit = module;
-    console.log('LiveKit client loaded successfully:', Object.keys(module));
+    console.log('LiveKit client v2 loaded successfully');
     return module;
   } catch (error) {
     console.error('Failed to load LiveKit client:', error);
@@ -17,7 +16,88 @@ const initLiveKit = async () => {
   }
 };
 
+// Enhanced TTS function that actually speaks
+export const speakWithTTS = (text) => {
+  return new Promise((resolve) => {
+    if (!('speechSynthesis' in window)) {
+      console.warn('Speech synthesis not supported');
+      resolve({
+        success: false,
+        error: 'TTS not supported',
+        message: `Text would be: "${text}"`
+      });
+      return;
+    }
+
+    // Stop any ongoing speech
+    window.speechSynthesis.cancel();
+
+    const utterance = new SpeechSynthesisUtterance(text);
+    
+    // Get available voices and try to find a good one
+    const voices = window.speechSynthesis.getVoices();
+    const preferredVoices = voices.filter(voice => 
+      voice.lang.includes('en') && 
+      (voice.name.includes('Google') || voice.name.includes('Samantha') || voice.name.includes('Alex') || voice.name.includes('Karen'))
+    );
+    
+    if (preferredVoices.length > 0) {
+      utterance.voice = preferredVoices[0];
+      console.log('Using TTS voice:', preferredVoices[0].name);
+    }
+
+    // Configure speech
+    utterance.rate = 0.9;
+    utterance.pitch = 1.0;
+    utterance.volume = 1.0;
+
+    utterance.onstart = () => {
+      console.log('TTS started speaking:', text);
+    };
+
+    utterance.onend = () => {
+      console.log('TTS finished speaking');
+      resolve({
+        success: true,
+        message: `TTS spoke: "${text}"`,
+        call_id: 'tts-call-' + Date.now(),
+        method: 'browser_tts'
+      });
+    };
+
+    utterance.onerror = (event) => {
+      console.error('TTS error:', event.error);
+      resolve({
+        success: false,
+        error: 'TTS failed',
+        message: `Failed to speak: "${text}"`
+      });
+    };
+
+    // Speak the text
+    try {
+      window.speechSynthesis.speak(utterance);
+    } catch (error) {
+      console.error('Failed to speak:', error);
+      resolve({
+        success: false,
+        error: 'TTS exception',
+        message: `Failed to speak: "${text}"`
+      });
+    }
+  });
+};
+
 export async function connectLiveKit() {
+  // Check if we have a valid LiveKit URL (not localhost/mock)
+  const livekitUrl = import.meta.env.VITE_LIVEKIT_URL;
+  const isMockUrl = !livekitUrl || livekitUrl.includes('localhost') || livekitUrl.includes('mock');
+  
+  if (isMockUrl) {
+    console.log('Mock LiveKit URL detected, using mock room');
+    return createMockRoom();
+  }
+
   try {
     const LiveKitModule = await initLiveKit();
     
@@ -26,81 +106,63 @@ export async function connectLiveKit() {
     const data = await response.json();
     
     if (!data.success) {
-      throw new Error(data.error || 'Failed to get LiveKit token');
+      console.warn('Failed to get LiveKit token, using mock:', data.error);
+      return createMockRoom();
     }
 
-    // Try different ways to find the connect function
-    let connectFunction = null;
+    // Check if token is mock
+    if (data.token.includes('mock') || !data.token) {
+      console.warn('Mock LiveKit token detected, using mock room');
+      return createMockRoom();
+    }
+
+    // In v2, we use Room object and connect method
+    const room = new LiveKitModule.Room();
     
-    // Method 1: Direct export
-    if (LiveKitModule.connect) {
-      connectFunction = LiveKitModule.connect;
-    } 
-    // Method 2: Default export
-    else if (LiveKitModule.default && LiveKitModule.default.connect) {
-      connectFunction = LiveKitModule.default.connect;
-    }
-    // Method 3: Room.connect (v2 style)
-    else if (LiveKitModule.Room && LiveKitModule.Room.connect) {
-      connectFunction = LiveKitModule.Room.connect;
-    }
-    // Method 4: Check for v2 style exports
-    else if (LiveKitModule.createLocalTracks || LiveKitModule.Room) {
-      // For v2, we might need to use Room directly
-      console.log('LiveKit v2 detected, using Room class directly');
-      // We'll handle v2 separately
-    }
-
-    if (!connectFunction) {
-      console.warn('Standard connect methods not found, trying experimental approach...');
-      
-      // Experimental: Try to use the module as a function
-      if (typeof LiveKitModule === 'function') {
-        connectFunction = LiveKitModule;
-      } else {
-        throw new Error('LiveKit connect function not found. Available exports: ' + Object.keys(LiveKitModule).join(', '));
+    // Set up event listeners before connecting
+    room.on(LiveKitModule.RoomEvent.TrackSubscribed, (track, publication, participant) => {
+      if (track.kind === 'audio') {
+        const audioElement = track.attach();
+        audioElement.style.display = 'none';
+        document.body.appendChild(audioElement);
+        console.log('Subscribed to audio track from:', participant.identity);
       }
-    }
+    });
 
-    // Connect to room
-    const room = await connectFunction(import.meta.env.VITE_LIVEKIT_URL || 'ws://localhost:7880', data.token);
+    // Connect to the room with timeout
+    const connectPromise = room.connect(livekitUrl, data.token);
+    const timeoutPromise = new Promise((_, reject) => 
+      setTimeout(() => reject(new Error('LiveKit connection timeout')), 10000)
+    );
+
+    await Promise.race([connectPromise, timeoutPromise]);
+    console.log('Successfully connected to LiveKit room:', room.name);
     
-    // Set up event listeners
-    if (room) {
-      // Get RoomEvent from module
-      const RoomEvent = LiveKitModule.RoomEvent || (LiveKitModule.default && LiveKitModule.default.RoomEvent);
-      
-      if (RoomEvent) {
-        room.on(RoomEvent.TrackSubscribed, (track, publication, participant) => {
-          if (track.kind === 'audio') {
-            const audioElement = track.attach();
-            audioElement.style.display = 'none';
-            document.body.appendChild(audioElement);
-            console.log('Subscribed to audio track from:', participant.identity);
-          }
-        });
-      } else {
-        console.warn('RoomEvent not found, audio subscription might not work');
-      }
-
-      console.log('Successfully connected to LiveKit room:', room.name);
-      return room;
-    } else {
-      throw new Error('Failed to create room connection');
-    }
+    return room;
 
   } catch (error) {
     console.error('Failed to connect to LiveKit:', error);
     
     // Fallback: Return a mock room for development
     console.log('Using mock LiveKit room for development');
-    return {
-      name: 'mock-room',
-      on: () => {},
-      disconnect: () => {},
-      isConnected: true
-    };
+    return createMockRoom();
   }
+}
+
+function createMockRoom() {
+  return {
+    name: 'mock-room',
+    on: (event, callback) => {
+      console.log(`Mock room: Event '${event}' subscribed`);
+    },
+    disconnect: () => {
+      console.log('Mock room: Disconnected');
+    },
+    isConnected: true,
+    localParticipant: {
+      identity: 'mock-user'
+    }
+  };
 }
 
 export async function sendToAvatar(avatarId, text) {
@@ -126,12 +188,7 @@ export async function sendToAvatar(avatarId, text) {
   } catch (error) {
     console.error('Error sending to avatar:', error);
     
-    // Mock response for development
-    console.log(`Mock: Avatar would speak: "${text}"`);
-    return {
-      success: true,
-      message: `Mock: Avatar spoke: "${text}"`,
-      call_id: 'mock-call-' + Date.now()
-    };
+    // Use TTS as fallback
+    return await speakWithTTS(text);
   }
 }

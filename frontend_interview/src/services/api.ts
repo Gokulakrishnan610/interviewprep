@@ -328,8 +328,17 @@ class ApiService {
   // LiveKit methods
   async startInterview(id: string): Promise<ApiResponse<{ token: string; room: string }>> {
     try {
-      const response = await this.post<{ token: string; room: string }>(`/interviews/${id}/start`);
-      return response;
+      const response = await this.post<any>(`/interviews/sessions/${id}/start/`);
+      if (response.success && response.data) {
+        const data = response.data as any;
+        const token = data.token || data.room_token || data.livekit_token;
+        const room = data.room || data.room_name;
+        return {
+          success: true,
+          data: { token, room }
+        };
+      }
+      return response as ApiResponse<{ token: string; room: string }>;
     } catch (error: any) {
       return {
         success: false,

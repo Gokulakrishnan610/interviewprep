@@ -10,6 +10,8 @@ import VerifyEmail from './pages/VerifyEmail';
 import Dashboard from './pages/Dashboard';
 import InterviewSessions from './pages/InterviewSessions';
 import VoiceInterview from './pages/VoiceInterview';
+import InterviewRoom from './components/InterviewRoom';
+import VideoInterview from './pages/VideoInterview';
 import PracticeMode from './pages/PracticeMode';
 import Profile from './pages/Profile';
 import './App.css';
@@ -55,9 +57,14 @@ const AppContent: React.FC = () => {
                 <InterviewSessions />
               </ProtectedRoute>
             } />
+            <Route path="/video-interview/:id" element={
+              <ProtectedRoute>
+                <VideoInterview />
+              </ProtectedRoute>
+            } />
             <Route path="/interview/:interviewId" element={
               <ProtectedRoute>
-                <VoiceInterview />
+                <VideoInterview />
               </ProtectedRoute>
             } />
             <Route path="/practice" element={
