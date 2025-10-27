@@ -3,7 +3,7 @@ import InterviewRoom from '../components/InterviewRoom';
 
 const VideoInterview: React.FC = () => {
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div style={{ width: '100vw', height: '100vh', overflow: 'hidden', margin: 0, padding: 0 }}>
       <InterviewRoom />
     </div>
   );

@@ -4,44 +4,7 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>AI Avatar - Beyond Presence + Gemini</title>
-    <!-- Beyond Presence SDK with multiple fallback options -->
-    <script>
-      // Load Beyond Presence SDK with multiple CDN options
-      function loadBeyondPresenceSDK() {
-        const cdns = [
-          'https://cdn.beyondpresence.ai/web-sdk.js',
-          'https://unpkg.com/@beyondpresence/web-sdk/dist/web-sdk.js',
-          'https://cdn.jsdelivr.net/npm/@beyondpresence/web-sdk/dist/web-sdk.js'
-        ];
-        
-        function tryLoad(index) {
-          if (index >= cdns.length) {
-            console.warn('All Beyond Presence CDNs failed, using fallback mode');
-            window.beyondPresenceLoaded = false;
-            return;
-          }
-          
-          const script = document.createElement('script');
-          script.src = cdns[index];
-          script.onload = () => {
-            console.log('Beyond Presence SDK loaded from:', cdns[index]);
-            window.beyondPresenceLoaded = true;
-            window.dispatchEvent(new Event('beyondPresenceLoaded'));
-          };
-          script.onerror = () => {
-            console.warn('Failed to load from:', cdns[index]);
-            tryLoad(index + 1);
-          };
-          document.head.appendChild(script);
-        }
-        
-        tryLoad(0);
-      }
-      
-      // Load the SDK
-      loadBeyondPresenceSDK();
-    </script>
+    <title>AI Avatar Interview Room</title>
   </head>
   <body>
     <div id="root"></div>
