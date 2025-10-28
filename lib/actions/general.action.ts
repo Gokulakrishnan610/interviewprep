@@ -67,9 +67,22 @@ export async function createFeedback(params: CreateFeedbackParams) {
 }
 
 export async function getInterviewById(id: string): Promise<Interview | null> {
-  const interview = await db.collection("interviews").doc(id).get();
-
-  return interview.data() as Interview | null;
+  // Temporarily return mock data for testing
+  console.log("getInterviewById called with id:", id);
+  if (id.startsWith("mock-")) {
+    return {
+      id: id,
+      userId: "test-user",
+      role: "Software Engineer",
+      level: "Mid-level",
+      questions: ["What is your experience with React?", "Explain component lifecycle"],
+      techstack: ["React", "JavaScript", "TypeScript"],
+      type: "Technical Interview",
+      createdAt: new Date().toISOString(),
+      finalized: true,
+    };
+  }
+  return null;
 }
 
 export async function getFeedbackByInterviewId(
@@ -77,17 +90,34 @@ export async function getFeedbackByInterviewId(
 ): Promise<Feedback | null> {
   const { interviewId, userId } = params;
 
-  const querySnapshot = await db
-    .collection("feedback")
-    .where("interviewId", "==", interviewId)
-    .where("userId", "==", userId)
-    .limit(1)
-    .get();
-
-  if (querySnapshot.empty) return null;
-
-  const feedbackDoc = querySnapshot.docs[0];
-  return { id: feedbackDoc.id, ...feedbackDoc.data() } as Feedback;
+  // Temporarily return mock data for testing
+  console.log("getFeedbackByInterviewId called with interviewId:", interviewId, "userId:", userId);
+  return {
+    id: "mock-feedback-" + interviewId,
+    interviewId: interviewId,
+    totalScore: 85,
+    categoryScores: [
+      {
+        name: "Communication Skills",
+        score: 90,
+        comment: "Clear and articulate responses"
+      },
+      {
+        name: "Technical Knowledge",
+        score: 80,
+        comment: "Good understanding of core concepts"
+      },
+      {
+        name: "Problem-Solving",
+        score: 85,
+        comment: "Logical approach to problems"
+      }
+    ],
+    strengths: ["Good communication", "Solid technical foundation"],
+    areasForImprovement: ["Could provide more detailed examples", "Practice system design questions"],
+    finalAssessment: "Strong candidate with good potential. Ready for mid-level positions.",
+    createdAt: new Date().toISOString(),
+  };
 }
 
 export async function getLatestInterviews(
@@ -95,31 +125,50 @@ export async function getLatestInterviews(
 ): Promise<Interview[] | null> {
   const { userId, limit = 20 } = params;
 
-  const interviews = await db
-    .collection("interviews")
-    .orderBy("createdAt", "desc")
-    .where("finalized", "==", true)
-    .where("userId", "!=", userId)
-    .limit(limit)
-    .get();
-
-  return interviews.docs.map((doc) => ({
-    id: doc.id,
-    ...doc.data(),
-  })) as Interview[];
+  // Temporarily return mock data for testing
+  console.log("getLatestInterviews called with userId:", userId, "limit:", limit);
+  return [
+    {
+      id: "mock-latest-1",
+      userId: "other-user",
+      role: "Full Stack Developer",
+      level: "Senior",
+      questions: ["What is MERN stack?", "Explain JWT authentication"],
+      techstack: ["React", "Node.js", "MongoDB"],
+      type: "Technical",
+      createdAt: new Date().toISOString(),
+      finalized: true,
+    },
+  ];
 }
 
 export async function getInterviewsByUserId(
   userId: string
 ): Promise<Interview[] | null> {
-  const interviews = await db
-    .collection("interviews")
-    .where("userId", "==", userId)
-    .orderBy("createdAt", "desc")
-    .get();
-
-  return interviews.docs.map((doc) => ({
-    id: doc.id,
-    ...doc.data(),
-  })) as Interview[];
+  // Temporarily return mock data for testing
+  console.log("getInterviewsByUserId called with userId:", userId);
+  return [
+    {
+      id: "mock-interview-1",
+      userId: userId,
+      role: "Frontend Developer",
+      level: "Mid-level",
+      questions: ["What is React?", "Explain useState"],
+      techstack: ["JavaScript", "React"],
+      type: "Technical",
+      createdAt: new Date().toISOString(),
+      finalized: true,
+    },
+    {
+      id: "mock-interview-2",
+      userId: userId,
+      role: "Backend Developer",
+      level: "Senior",
+      questions: ["What is REST?", "Explain database indexing"],
+      techstack: ["Python", "Django"],
+      type: "System Design",
+      createdAt: new Date().toISOString(),
+      finalized: true,
+    },
+  ];
 }

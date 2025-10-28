@@ -4,22 +4,32 @@ import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import InterviewCard from "@/components/InterviewCard";
 
-import { getCurrentUser } from "@/lib/actions/auth.action";
 import {
   getInterviewsByUserId,
   getLatestInterviews,
 } from "@/lib/actions/general.action";
 
 async function Home() {
-  const user = await getCurrentUser();
+  console.log("Home page loading");
+  // Temporarily disable user check for testing
+  // const user = await getCurrentUser();
+  // console.log("User from getCurrentUser:", user);
+  const user = { id: "test-user", name: "Test User" };
+
+  // Temporarily disable user check for testing
+  // if (!user || !user.id) {
+  //   redirect("/sign-in");
+  // }
 
   const [userInterviews, allInterview] = await Promise.all([
-    getInterviewsByUserId(user?.id!),
-    getLatestInterviews({ userId: user?.id! }),
+    getInterviewsByUserId(user.id),
+    getLatestInterviews({ userId: user.id }),
   ]);
 
-  const hasPastInterviews = userInterviews?.length! > 0;
-  const hasUpcomingInterviews = allInterview?.length! > 0;
+  console.log("Interviews loaded:", userInterviews?.length, allInterview?.length);
+
+  const hasPastInterviews = (userInterviews?.length || 0) > 0;
+  const hasUpcomingInterviews = (allInterview?.length || 0) > 0;
 
   return (
     <>
@@ -52,7 +62,7 @@ async function Home() {
             userInterviews?.map((interview) => (
               <InterviewCard
                 key={interview.id}
-                userId={user?.id}
+                userId={user?.id || "test-user"}
                 interviewId={interview.id}
                 role={interview.role}
                 type={interview.type}
@@ -74,7 +84,7 @@ async function Home() {
             allInterview?.map((interview) => (
               <InterviewCard
                 key={interview.id}
-                userId={user?.id}
+                userId={user?.id || "test-user"}
                 interviewId={interview.id}
                 role={interview.role}
                 type={interview.type}
