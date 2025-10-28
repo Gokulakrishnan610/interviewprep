@@ -118,10 +118,13 @@ const Agent = ({
     setCallStatus(CallStatus.CONNECTING);
 
     if (type === "generate") {
-      await vapi.start(process.env.NEXT_PUBLIC_VAPI_WORKFLOW_ID!, {
+      // Try calling workflow directly as a string (original approach)
+      // Cast to avoid TypeScript issues with workflow vs assistant calling
+      const vapiInstance = vapi as unknown as { start: (idOrConfig: string | object, options?: { variableValues?: Record<string, string> }) => Promise<any> };
+      await vapiInstance.start(process.env.NEXT_PUBLIC_VAPI_WORKFLOW_ID!, {
         variableValues: {
-          username: userName,
-          userid: userId,
+          username: userName || "User",
+          userid: userId || "user123",
         },
       });
     } else {
