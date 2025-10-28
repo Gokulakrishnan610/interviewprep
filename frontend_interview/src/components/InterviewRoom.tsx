@@ -497,8 +497,14 @@ const InterviewRoom: React.FC = () => {
       console.log('📸 Screenshot captured, processing with OCR...');
       
       // Convert canvas to blob
-      const blob = await new Promise<Blob>((resolve) => {
-        canvas.toBlob((b) => resolve(b!), 'image/png');
+      const blob = await new Promise<Blob>((resolve, reject) => {
+        canvas.toBlob((b: Blob | null) => {
+          if (!b) {
+            reject(new Error('Failed to create image blob'));
+            return;
+          }
+          resolve(b);
+        }, 'image/png');
       });
       
       // Run OCR
@@ -513,7 +519,7 @@ const InterviewRoom: React.FC = () => {
       console.log('Extracted text:', text);
       
       // Parse the text to extract messages
-      const lines = text.split('\n').filter(line => line.trim().length > 10);
+      const lines = text.split('\n').filter((line: string) => line.trim().length > 10);
       
       let extracted = 0;
       for (const line of lines) {

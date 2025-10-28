@@ -186,9 +186,9 @@ export function setupSpeechRecognition(
  */
 export async function captureScreenAndExtractText(): Promise<string> {
   try {
-    // @ts-ignore
     const stream = await navigator.mediaDevices.getDisplayMedia({
-      video: { mediaSource: 'screen' }
+      video: true,
+      audio: false
     });
 
     console.log('✅ Screen capture started');
