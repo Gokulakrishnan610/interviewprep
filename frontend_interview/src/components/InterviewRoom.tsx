@@ -507,13 +507,8 @@ const InterviewRoom: React.FC = () => {
         }, 'image/png');
       });
       
-      // Run OCR
-      const worker = await Tesseract.createWorker();
-      await worker.loadLanguage('eng');
-      await worker.initialize('eng');
-      
-      const { data: { text } } = await worker.recognize(blob);
-      await worker.terminate();
+      // Run OCR using the correct Tesseract.js API
+      const { data: { text } } = await Tesseract.recognize(blob, 'eng');
       
       console.log('✅ OCR completed');
       console.log('Extracted text:', text);
