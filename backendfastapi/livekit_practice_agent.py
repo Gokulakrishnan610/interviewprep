@@ -16,54 +16,7 @@ from livekit.agents import (
 )
 from livekit.agents.voice import Agent, AgentSession
 from livekit.plugins import bey, deepgram, elevenlabs
-
-# Import for Gemini (we'll use custom implementation since no direct plugin)
-import google.generativeai as genai
-
-
-class GeminiLLM:
-    """Custom LLM wrapper for Gemini 2.5 Flash"""
-    
-    def __init__(self, model_name: str = "gemini-2.0-flash", temperature: float = 0.8):
-        api_key = os.getenv("GEMINI_API_KEY")
-        if not api_key:
-            raise ValueError("GEMINI_API_KEY not found in environment")
-        
-        genai.configure(api_key=api_key)
-        self.model = genai.GenerativeModel(model_name)
-        self.temperature = temperature
-        self.conversation_history = []
-        
-        print(f"✅ Gemini {model_name} initialized")
-    
-    async def generate(self, prompt: str) -> str:
-        """Generate response using Gemini"""
-        print(f"🤖 Gemini generating response for: {prompt}")
-        try:
-            # Add to conversation history
-            self.conversation_history.append({"role": "user", "content": prompt})
-            
-            # Build full context
-            context = "\n".join([
-                f"{'User' if msg['role'] == 'user' else 'Assistant'}: {msg['content']}"
-                for msg in self.conversation_history
-            ])
-            
-            print(f"📝 Full context: {context}")
-            
-            # Generate response
-            response = self.model.generate_content(context)
-            response_text = response.text
-            
-            print(f"✅ Gemini response: {response_text}")
-            
-            # Add to history
-            self.conversation_history.append({"role": "assistant", "content": response_text})
-            
-            return response_text
-        except Exception as e:
-            print(f"❌ Gemini error: {e}")
-            return "I apologize, I'm having trouble responding right now."
+from livekit.plugins.google.realtime import RealtimeModel
 
 
 async def entrypoint(ctx: JobContext) -> None:
@@ -74,10 +27,10 @@ async def entrypoint(ctx: JobContext) -> None:
     
     await ctx.connect(auto_subscribe=AutoSubscribe.AUDIO_ONLY)
     
-    # Initialize Gemini LLM
-    gemini_llm = GeminiLLM(
-        model_name="gemini-2.0-flash-exp",
-        temperature=0.8
+    # Initialize Google Gemini Realtime Model
+    gemini_llm = RealtimeModel(
+        api_key=os.getenv("GEMINI_API_KEY"),
+        voice="Puck"
     )
     
     # Configure Voice Agent Session with Deepgram and ElevenLabs
@@ -156,7 +109,7 @@ if __name__ == "__main__":
     print("=" * 60)
     print("🎯 Practice Mode - AI Interview Coach")
     print("=" * 60)
-    print(f"   Model: Gemini 2.5 Flash")
+    print(f"   Model: Gemini 2.0 Flash Realtime")
     print(f"   STT: Deepgram Nova-2")
     print(f"   TTS: ElevenLabs")
     print(f"   Avatar: Beyond Presence")
