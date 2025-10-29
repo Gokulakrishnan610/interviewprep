@@ -91,12 +91,12 @@ class ApiService {
       const response = await this.api.post(url, data);
       
       // Handle backend response format for auth endpoints
-      if (url.includes('/auth/register') || url.includes('/auth/login')) {
-        const { access_token, token_type, user } = response.data;
+      if (url.includes('/auth/register') || url.includes('/auth/login') || url.includes('/auth/create-test-user')) {
+        const { access_token, token, user } = response.data;
         return {
           success: true,
           data: {
-            token: access_token,
+            token: access_token || token,
             user: user
           } as T
         };
@@ -191,6 +191,10 @@ class ApiService {
 
   async getCurrentUser(): Promise<ApiResponse<any>> {
     return this.get('/auth/me');
+  }
+
+  async createTestUser(): Promise<ApiResponse<any>> {
+    return this.post('/auth/create-test-user/');
   }
 
   // User methods
@@ -325,7 +329,23 @@ class ApiService {
     return this.post(`/practice/${id}/transcript`, transcriptData);
   }
 
-  // LiveKit methods
+  // LiveKit Interview Bot methods
+  async createInterviewSession(data: {
+    user_id: string;
+    session_type?: string;
+    difficulty?: string;
+  }): Promise<ApiResponse<{
+    room_name: string;
+    user_token: string;
+    agent_token: string;
+    livekit_url: string;
+    session_type: string;
+    difficulty: string;
+  }>> {
+    return this.post('/create-interview-session', data);
+  }
+
+  // Legacy method for regular interviews (Django backend)
   async startInterview(id: string): Promise<ApiResponse<{ token: string; room: string }>> {
     try {
       const response = await this.post<any>(`/interviews/sessions/${id}/start/`);

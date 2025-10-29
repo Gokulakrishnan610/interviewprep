@@ -75,24 +75,32 @@ Start every session with a warm, personal greeting and end by asking if they hav
         llm=gemini_llm  # Pass the LLM to the Agent
     )
     
-    # Initialize Beyond Presence Avatar
+    # Prevent multiple avatar sessions per room
+    if not hasattr(entrypoint, "_active_avatar_rooms"):
+        entrypoint._active_avatar_rooms = set()
     bey_avatar_id = os.getenv("BEY_AVATAR_ID")
     if not bey_avatar_id:
         print("⚠️ BEY_AVATAR_ID not found, avatar will not be displayed")
         bey_avatar_session = None
     else:
-        bey_avatar_session = bey.AvatarSession(avatar_id=bey_avatar_id)
-        print(f"✅ Beyond Presence Avatar initialized: {bey_avatar_id}")
-    
+        room_name = ctx.room.name
+        if room_name in entrypoint._active_avatar_rooms:
+            print(f"⚠️ Avatar session already started for room: {room_name}")
+            bey_avatar_session = None
+        else:
+            bey_avatar_session = bey.AvatarSession(avatar_id=bey_avatar_id)
+            entrypoint._active_avatar_rooms.add(room_name)
+            print(f"✅ Beyond Presence Avatar initialized: {bey_avatar_id}")
+
     # Start voice agent session
     await voice_agent_session.start(agent=voice_agent, room=ctx.room)
     print("✅ Voice agent session started")
-    
+
     # Start avatar session if available
     if bey_avatar_session:
         await bey_avatar_session.start(voice_agent_session, room=ctx.room)
         print("✅ Avatar session started")
-    
+
     print("🎙️ Practice interview session is live!")
     print("👂 Listening for user speech...")
 

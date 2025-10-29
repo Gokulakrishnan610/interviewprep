@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useReducer, useEffect, ReactNode } from 'react';
-import { apiService, ApiResponse } from '../services/api';
+import { apiService } from '../services/api';
 import { User } from '../types';
 
 // Types
@@ -24,7 +24,7 @@ const initialState: AuthState = {
   user: null,
   token: localStorage.getItem('token'),
   isLoading: true,
-  isAuthenticated: false,
+  isAuthenticated: !!localStorage.getItem('token'), // Only authenticated if token exists
   error: null,
 };
 
@@ -114,19 +114,39 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
               payload: { user: response.data, token },
             });
           } else {
-            // Token is invalid
-            localStorage.removeItem('token');
-            localStorage.removeItem('user');
-            dispatch({ type: 'AUTH_FAILURE', payload: 'Invalid token' });
+            // Token is invalid, create test user
+            await createTestUser();
           }
         } catch (error) {
-          localStorage.removeItem('token');
-          localStorage.removeItem('user');
-          dispatch({ type: 'AUTH_FAILURE', payload: 'Authentication failed' });
+          // Authentication failed, create test user
+          await createTestUser();
         }
       } else {
-        // No token found - this is normal for new users, not an error
-        dispatch({ type: 'AUTH_LOGOUT' });
+        // No token found, create test user
+        await createTestUser();
+      }
+    };
+
+    const createTestUser = async () => {
+      try {
+        const response = await apiService.createTestUser();
+        
+        if (response.success && response.data) {
+          const { token, user } = response.data;
+          
+          // Store token and user in localStorage
+          localStorage.setItem('token', token);
+          localStorage.setItem('user', JSON.stringify(user));
+          
+          dispatch({
+            type: 'AUTH_SUCCESS',
+            payload: { user, token },
+          });
+        } else {
+          dispatch({ type: 'AUTH_FAILURE', payload: 'Failed to create test user' });
+        }
+      } catch (error) {
+        dispatch({ type: 'AUTH_FAILURE', payload: 'Failed to create test user' });
       }
     };
 

@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { Mic, MicOff, Video, VideoOff, PhoneOff, Volume2 } from 'lucide-react';
-import { LiveKitService, getLivekitToken, startBeyondPresenceAgent } from '../services/livekitService';
+import { LiveKitService } from '../services/livekitService';
+import { interviewBotService } from '../services/interviewBotService';
 
 const PracticeInterviewRoom: React.FC = () => {
-  const { agentId } = useParams<{ agentId: string }>();
   const navigate = useNavigate();
   
   const [isConnected, setIsConnected] = useState(false);
@@ -34,48 +34,61 @@ const PracticeInterviewRoom: React.FC = () => {
       setIsConnecting(true);
       setError(null);
 
-      // Generate room name
-      const roomName = `practice-${agentId}-${Date.now()}`;
-      const participantName = `user-${Math.random().toString(36).substr(2, 9)}`;
+      console.log('🎯 Starting interview session with AI bot...');
 
-      console.log('🎯 Starting practice session:', roomName);
+      // Create interview session with bot
+      const response = await interviewBotService.createInterviewSession({
+        user_id: 'test-user', // Use test user for now
+        session_type: 'practice',
+        difficulty: 'intermediate'
+      });
 
-      // Get LiveKit token
-      const token = await getLivekitToken(roomName, participantName);
+      console.log('🎯 Interview session response:', response);
+
+      if (!response.success || !response.data || !(response.data as any).session) {
+        console.error('❌ Invalid response:', response);
+        throw new Error(response.error || 'Failed to create interview session');
+      }
+
+      const session = (response.data as any).session;
 
       // Initialize LiveKit service
       livekitService.current = new LiveKitService();
 
       // Set up callbacks
       livekitService.current.onConnected(() => {
-        console.log('✅ Connected to practice room');
+        console.log('✅ Connected to interview room');
         setIsConnected(true);
         setIsConnecting(false);
       });
 
       livekitService.current.onDisconnected(() => {
-        console.log('🔌 Disconnected from practice room');
+        console.log('🔌 Disconnected from interview room');
         setIsConnected(false);
       });
 
       livekitService.current.onParticipantConnected((participantName) => {
-        console.log('👤 Agent connected:', participantName);
+        console.log('🤖 Interview bot connected:', participantName);
         setAgentConnected(true);
       });
 
       livekitService.current.onTrackSubscribed((track) => {
         if (track.kind === 'video' && agentVideoRef.current) {
+          // Remove any existing video elements before adding new one
+          while (agentVideoRef.current.firstChild) {
+            agentVideoRef.current.removeChild(agentVideoRef.current.firstChild);
+          }
           const videoElement = track.attach();
           agentVideoRef.current.appendChild(videoElement);
-          console.log('📹 Agent video attached');
+          console.log('📹 Bot video attached');
         }
       });
 
-      // Connect to LiveKit room
+      // Connect to LiveKit room with user token
       const room = await livekitService.current.connect({
-        url: 'wss://interviewapp-86itzjcd.livekit.cloud',
-        token: token,
-        roomName: roomName,
+        url: session.livekit_url,
+        token: session.user_token,
+        roomName: session.room_name,
       });
 
       // Attach local video
@@ -87,13 +100,12 @@ const PracticeInterviewRoom: React.FC = () => {
         }
       }
 
-      // Start Beyond Presence agent
-      console.log('🤖 Starting Beyond Presence agent...');
-      await startBeyondPresenceAgent(roomName);
+      console.log('🤖 Interview bot session started successfully');
 
     } catch (err) {
-      console.error('❌ Error initializing practice session:', err);
-      setError('Failed to start practice session. Please try again.');
+      console.error('❌ Error initializing interview session:', err);
+      const errorMessage = err instanceof Error ? err.message : 'Please try again.';
+      setError(`Failed to start interview session: ${errorMessage}`);
       setIsConnecting(false);
     }
   };
