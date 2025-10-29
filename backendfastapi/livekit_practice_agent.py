@@ -38,6 +38,7 @@ class GeminiLLM:
     
     async def generate(self, prompt: str) -> str:
         """Generate response using Gemini"""
+        print(f"🤖 Gemini generating response for: {prompt}")
         try:
             # Add to conversation history
             self.conversation_history.append({"role": "user", "content": prompt})
@@ -48,9 +49,13 @@ class GeminiLLM:
                 for msg in self.conversation_history
             ])
             
+            print(f"📝 Full context: {context}")
+            
             # Generate response
             response = self.model.generate_content(context)
             response_text = response.text
+            
+            print(f"✅ Gemini response: {response_text}")
             
             # Add to history
             self.conversation_history.append({"role": "assistant", "content": response_text})
@@ -85,13 +90,9 @@ async def entrypoint(ctx: JobContext) -> None:
             punctuate=True
         ),
         
-        # LLM: Gemini 2.5 Flash (custom wrapper)
-        llm=gemini_llm,
-        
         # Text-to-Speech: ElevenLabs
         tts=elevenlabs.TTS(
             voice_id="21m00Tcm4TlvDq8ikWAM",  # Rachel voice
-            model_id="eleven_monolingual_v1",
             api_key=os.getenv("ELEVENLABS_API_KEY")
         ),
         
@@ -101,7 +102,7 @@ async def entrypoint(ctx: JobContext) -> None:
         # vad=silero.VAD.load(),
     )
     
-    # Create Voice Agent with interview coach instructions
+    # Create Voice Agent with interview coach instructions and LLM
     voice_agent = Agent(
         instructions="""You are Priya, a professional and friendly AI interview coach.
 
@@ -122,7 +123,8 @@ Interview approach:
 
 Keep responses conversational and concise (2-3 sentences).
 Listen actively and ask relevant follow-up questions.
-"""
+""",
+        llm=gemini_llm  # Pass the LLM to the Agent
     )
     
     # Initialize Beyond Presence Avatar
@@ -144,6 +146,7 @@ Listen actively and ask relevant follow-up questions.
         print("✅ Avatar session started")
     
     print("🎙️ Practice interview session is live!")
+    print("👂 Listening for user speech...")
 
 
 if __name__ == "__main__":
@@ -181,10 +184,17 @@ if __name__ == "__main__":
     # Override args for LiveKit CLI
     sys.argv = [sys.argv[0], "dev"]
     
+async def accept_all_rooms(job_req):
+    print("accept_all_rooms called")
+    await job_req.accept()
+    return None
+
+if __name__ == '__main__':
     # Run the LiveKit agent
     cli.run_app(
         WorkerOptions(
             entrypoint_fnc=entrypoint,
             worker_type=WorkerType.ROOM,
+            request_fnc=accept_all_rooms,
         )
     )
