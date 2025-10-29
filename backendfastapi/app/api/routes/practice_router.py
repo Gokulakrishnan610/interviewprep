@@ -9,16 +9,18 @@ from typing import Optional, List
 import os
 from datetime import datetime
 import google.generativeai as genai
+from app.core.config import settings
 
 router = APIRouter()
 
-# Configure Gemini 2.5 Flash
+# Configure Gemini (prefer settings, fallback to env var)
 try:
-    gemini_api_key = os.getenv("GEMINI_API_KEY")
+    gemini_api_key = settings.GEMINI_API_KEY or os.getenv("GEMINI_API_KEY")
     if gemini_api_key:
         genai.configure(api_key=gemini_api_key)
-        gemini_model = genai.GenerativeModel('gemini-2.5-flash')
-        print("✅ Practice router: Gemini 2.5 Flash initialized")
+        model_name = getattr(settings, "GEMINI_MODEL", "gemini-2.5-flash")
+        gemini_model = genai.GenerativeModel(model_name)
+        print(f"✅ Practice router: Gemini initialized with model {model_name}")
     else:
         gemini_model = None
         print("⚠️ Practice router: GEMINI_API_KEY not found")
@@ -263,5 +265,5 @@ async def practice_health():
         "status": "available",
         "gemini_available": gemini_model is not None,
         "active_sessions": len([s for s in practice_sessions.values() if s["status"] == "active"]),
-        "model": "gemini-2.0-flash-exp"
+        "model": "gemini-2.0-flash"
     }

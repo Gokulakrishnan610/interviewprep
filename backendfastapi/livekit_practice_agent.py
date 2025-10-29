@@ -24,7 +24,7 @@ import google.generativeai as genai
 class GeminiLLM:
     """Custom LLM wrapper for Gemini 2.5 Flash"""
     
-    def __init__(self, model_name: str = "gemini-2.0-flash-exp", temperature: float = 0.8):
+    def __init__(self, model_name: str = "gemini-2.0-flash", temperature: float = 0.8):
         api_key = os.getenv("GEMINI_API_KEY")
         if not api_key:
             raise ValueError("GEMINI_API_KEY not found in environment")

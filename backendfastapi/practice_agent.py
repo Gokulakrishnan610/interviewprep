@@ -18,7 +18,7 @@ class PracticeAgent:
         gemini_api_key = os.getenv('GEMINI_API_KEY')
         if gemini_api_key:
             genai.configure(api_key=gemini_api_key)
-            self.llm = genai.GenerativeModel('gemini-2.0-flash-exp')
+            self.llm = genai.GenerativeModel('gemini-2.0-flash')
             print("✅ Gemini 2.5 Flash configured")
         else:
             raise ValueError("GEMINI_API_KEY not found in .env.practice")

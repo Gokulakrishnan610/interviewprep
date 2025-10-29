@@ -3,6 +3,7 @@ from pydantic import BaseModel
 from typing import List, Optional
 from datetime import datetime
 import os
+from app.core.config import settings
 import json
 
 router = APIRouter()
@@ -10,12 +11,13 @@ router = APIRouter()
 # Import Gemini service for scoring
 try:
     import google.generativeai as genai
-    api_key = os.getenv("GEMINI_API_KEY")
+    # Prefer centralized settings, fallback to environment variable
+    api_key = settings.GEMINI_API_KEY or os.getenv("GEMINI_API_KEY")
     if api_key:
         genai.configure(api_key=api_key)
-        # Use gemini-1.5-flash (latest stable model)
-        gemini_model = genai.GenerativeModel('gemini-2.5-flash')
-        print("✅ Interview router: Gemini 2.5 Flash initialized successfully")
+        model_name = getattr(settings, "GEMINI_MODEL", "gemini-2.5-flash")
+        gemini_model = genai.GenerativeModel(model_name)
+        print(f"✅ Interview router: Gemini initialized with model {model_name}")
     else:
         gemini_model = None
         print("⚠️ Interview router: GEMINI_API_KEY not found")
