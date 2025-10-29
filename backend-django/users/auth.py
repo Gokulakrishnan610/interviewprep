@@ -184,7 +184,22 @@ def create_test_user(request):
         
         # Check if user already exists
         if User.objects.filter(email=email).exists():
-            return Response({'error': 'User already exists'}, status=status.HTTP_400_BAD_REQUEST)
+            # If user exists, just login them
+            user = User.objects.get(email=email)
+            if user.check_password(password):
+                refresh = RefreshToken.for_user(user)
+                return Response({
+                    'user': {
+                        'id': user.id,
+                        'email': user.email,
+                        'first_name': user.first_name,
+                        'last_name': user.last_name,
+                        'is_active': user.is_active
+                    },
+                    'token': str(refresh.access_token),
+                })
+            else:
+                return Response({'error': 'Invalid password for existing user'}, status=status.HTTP_400_BAD_REQUEST)
         
         # Create user
         user = User.objects.create_user(
@@ -195,7 +210,10 @@ def create_test_user(request):
             is_active=True  # Activate immediately for testing
         )
         
-        # Return simple user data without serializer
+        # Generate token
+        refresh = RefreshToken.for_user(user)
+        
+        # Return user data with token
         return Response({
             'message': 'Test user created successfully',
             'user': {
@@ -204,7 +222,8 @@ def create_test_user(request):
                 'first_name': user.first_name,
                 'last_name': user.last_name,
                 'is_active': user.is_active
-            }
+            },
+            'token': str(refresh.access_token),
         }, status=status.HTTP_201_CREATED)
         
     except Exception as e:
