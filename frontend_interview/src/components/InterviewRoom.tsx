@@ -67,7 +67,7 @@ const InterviewRoom: React.FC = () => {
     
     try {
       // End the interview session and get scores
-      const response = await fetch(`http://localhost:8002/api/interview/end-session/${sessionId}`, {
+      const response = await fetch(`http://127.0.0.1:8002/api/interview/end-session/${sessionId}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' }
       });
@@ -75,15 +75,35 @@ const InterviewRoom: React.FC = () => {
       if (response.ok) {
         const data = await response.json();
         console.log('Interview scores:', data.scores);
-        
-        // Navigate to results page with scores
-        navigate('/interview-results', { 
-          state: { 
-            sessionId, 
+
+        // Try to fetch latest Beyond Presence email analysis from FastAPI
+        let gmailAnalysis: any = null;
+        try {
+          const gmailResp = await fetch('http://127.0.0.1:8002/api/gmail/fetch-latest');
+          if (gmailResp.status === 401) {
+            // Initiate OAuth flow
+            const authUrlResp = await fetch('http://127.0.0.1:8002/api/gmail/auth-url');
+            if (authUrlResp.ok) {
+              const authData = await authUrlResp.json();
+              // Redirect to Google OAuth; after consent, backend stores token
+              window.location.href = authData.auth_url;
+              return;
+            }
+          } else if (gmailResp.ok) {
+            gmailAnalysis = await gmailResp.json();
+          }
+        } catch (e) {
+          console.warn('Gmail fetch failed or skipped:', e);
+        }
+
+        navigate('/interview-results', {
+          state: {
+            sessionId,
             scores: data.scores,
             conversation: conversationLog,
-            duration: elapsedTime
-          } 
+            duration: elapsedTime,
+            gmailAnalysis
+          }
         });
       } else {
         throw new Error('Failed to get interview scores');
@@ -196,7 +216,7 @@ const InterviewRoom: React.FC = () => {
   useEffect(() => {
     const initSession = async () => {
       try {
-        const response = await fetch('http://localhost:8002/api/interview/start-session', {
+        const response = await fetch('http://127.0.0.1:8002/api/interview/start-session', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -242,7 +262,7 @@ const InterviewRoom: React.FC = () => {
           
           // Send to backend
           try {
-            await fetch(`http://localhost:8002/api/interview/add-message/${sessionId}`, {
+            await fetch(`http://127.0.0.1:8002/api/interview/add-message/${sessionId}`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify(msg)
@@ -285,7 +305,7 @@ const InterviewRoom: React.FC = () => {
           setConversationLog(prev => [...prev, message]);
           
           // Send to backend
-          const response = await fetch(`http://localhost:8002/api/interview/add-message/${sessionId}`, {
+          const response = await fetch(`http://127.0.0.1:8002/api/interview/add-message/${sessionId}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(message)
@@ -367,7 +387,7 @@ const InterviewRoom: React.FC = () => {
 
     // Send to backend
     try {
-      const response = await fetch(`http://localhost:8002/api/interview/add-message/${sessionId}`, {
+      const response = await fetch(`http://127.0.0.1:8002/api/interview/add-message/${sessionId}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(message)
@@ -404,7 +424,7 @@ const InterviewRoom: React.FC = () => {
 
       setConversationLog(prev => [...prev, message]);
 
-      await fetch(`http://localhost:8002/api/interview/add-message/${sessionId}`, {
+      await fetch(`http://127.0.0.1:8002/api/interview/add-message/${sessionId}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(message)
@@ -546,7 +566,7 @@ const InterviewRoom: React.FC = () => {
         if (!exists) {
           setConversationLog(prev => [...prev, message]);
           
-          await fetch(`http://localhost:8002/api/interview/add-message/${sessionId}`, {
+          await fetch(`http://127.0.0.1:8002/api/interview/add-message/${sessionId}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(message)

@@ -24,6 +24,9 @@ class Settings(BaseSettings):
     # CORS
     ALLOWED_ORIGINS: List[str] = [
         "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
         "http://localhost:8000"  # Django backend
     ]
     
@@ -72,6 +75,12 @@ class Settings(BaseSettings):
     
     # Mode
     MODE: str = "production"
+    
+    # Gmail API OAuth
+    GMAIL_CLIENT_ID: str = "666662207936-j9c2bolugep2lnadjoh7r6guuodusjii.apps.googleusercontent.com"
+    GMAIL_CLIENT_SECRET: str = "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"
+    GMAIL_REDIRECT_URI: str = "http://localhost:8002/api/gmail/oauth-callback"
+    GMAIL_TOKEN_FILE: str = "gmail_token.json"
     
     class Config:
         env_file = ".env"

@@ -30,5 +30,8 @@ livekit-plugins-deepgram
 livekit-plugins-silero
 livekit-plugins-turn-detector
 livekit-plugins-google
-transformers==4.34.1
-torch>=2.2.0
+transformers
+torch
+google-api-python-client
+google-auth
+google-auth-oauthlib

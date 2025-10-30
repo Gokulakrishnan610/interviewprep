@@ -181,7 +181,7 @@ export class LiveKitService {
  */
 export async function getLivekitToken(roomName: string, participantName: string): Promise<string> {
   try {
-    const response = await fetch('http://localhost:8002/api/livekit/token', {
+    const response = await fetch('http://127.0.0.1:8002/api/livekit/token', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -211,7 +211,7 @@ export async function startBeyondPresenceAgent(roomName: string): Promise<void> 
     const token = await getLivekitToken(roomName, 'beyond-presence-agent');
 
     // Create Beyond Presence agent
-    const response = await fetch('http://localhost:8002/api/beyond-presence/create-agent', {
+    const response = await fetch('http://127.0.0.1:8002/api/beyond-presence/create-agent', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -243,7 +243,7 @@ export async function startBeyondPresenceAgent(roomName: string): Promise<void> 
     }
 
     // Kick off Beyond Presence call so the avatar joins the room
-    const callResponse = await fetch('http://localhost:8002/api/beyond-presence/create-call', {
+    const callResponse = await fetch('http://127.0.0.1:8002/api/beyond-presence/create-call', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({

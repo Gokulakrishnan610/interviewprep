@@ -37,7 +37,7 @@ __pycache__/
 
 # Virtual environments
 venv/
-env/
+envr/
 .venv/
 
 # IDE settings
@@ -67,7 +67,7 @@ yarn-error.log
 
 # Python environments
 venv/
-.env/
+
 
 # Python cache
 __pycache__/

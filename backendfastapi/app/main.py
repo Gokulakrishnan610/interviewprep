@@ -30,6 +30,15 @@ app.include_router(practice_router.router, prefix="/api/practice", tags=["Practi
 app.include_router(beyond_presence_router.router, prefix="/api/beyond-presence", tags=["Beyond Presence"])
 app.include_router(livekit_router.router, prefix="/api/livekit", tags=["LiveKit"])
 
+# Gmail router (optional - requires google-api-python-client, google-auth, google-auth-oauthlib)
+try:
+    from app.api.routes import gmail_router
+    app.include_router(gmail_router.router, prefix="/api/gmail", tags=["Gmail"])
+    print("✅ Gmail router loaded")
+except ImportError as e:
+    print(f"⚠️ Gmail router not available: {e}")
+    print("   Install: pip install google-api-python-client google-auth google-auth-oauthlib")
+
 @app.get("/")
 async def root():
     return {
