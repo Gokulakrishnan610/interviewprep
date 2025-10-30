@@ -67,7 +67,7 @@ yarn-error.log
 
 # Python environments
 venv/
-
+.env
 
 # Python cache
 __pycache__/
