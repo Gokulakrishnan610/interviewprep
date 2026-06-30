@@ -4,34 +4,113 @@
 
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
 
+/* ── Design tokens ────────────────────────────────────────────────────────── */
+:root {
+  --color-bg:        #0a0f1e;
+  --color-surface:   #111827;
+  --color-surface-2: #1a2235;
+  --color-border:    #1e2d45;
+  --color-border-2:  #2a3f5a;
+
+  --color-brand:     #6366f1;  /* indigo-500 */
+  --color-brand-h:   #4f46e5;  /* indigo-600 hover */
+  --color-brand-2:   #818cf8;  /* indigo-400 softer */
+
+  --color-text:      #f1f5f9;  /* slate-100 */
+  --color-text-2:    #94a3b8;  /* slate-400 */
+  --color-text-3:    #64748b;  /* slate-500 */
+
+  --color-success:   #10b981;
+  --color-warning:   #f59e0b;
+  --color-danger:    #ef4444;
+
+  --radius:    0.5rem;
+  --radius-lg: 0.75rem;
+  --radius-xl: 1rem;
+}
+
+/* ── Base ─────────────────────────────────────────────────────────────────── */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
 body {
   margin: 0;
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
-    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
-    sans-serif;
+  background-color: var(--color-bg);
+  color: var(--color-text);
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  font-size: 15px;
+  line-height: 1.6;
 }
 
-code {
-  font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
-    monospace;
-}
+/* ── Scrollbar ────────────────────────────────────────────────────────────── */
+::-webkit-scrollbar        { width: 5px; height: 5px; }
+::-webkit-scrollbar-track  { background: var(--color-surface); }
+::-webkit-scrollbar-thumb  { background: var(--color-border-2); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--color-text-3); }
 
-/* Custom scrollbar */
-::-webkit-scrollbar {
-  width: 6px;
-}
+/* ── Tailwind primary alias (used in existing components) ─────────────────── */
+.text-primary-600    { color: var(--color-brand); }
+.bg-primary-600      { background-color: var(--color-brand); }
+.hover\:bg-primary-700:hover { background-color: var(--color-brand-h); }
+.hover\:text-primary-500:hover { color: var(--color-brand-2); }
+.focus\:ring-primary-500:focus { --tw-ring-color: var(--color-brand); }
+.focus\:border-primary-500:focus { border-color: var(--color-brand); }
+.ring-primary-500    { --tw-ring-color: var(--color-brand); }
+.border-primary-500  { border-color: var(--color-brand); }
 
-::-webkit-scrollbar-track {
-  background: #f1f5f9;
-}
+/* ── Component helpers ────────────────────────────────────────────────────── */
+@layer components {
+  /* Card */
+  .card {
+    @apply rounded-xl border bg-[#111827] border-[#1e2d45] p-6;
+  }
 
-::-webkit-scrollbar-thumb {
-  background: #cbd5e1;
-  border-radius: 3px;
-}
+  /* Input */
+  .input {
+    @apply w-full rounded-lg border border-[#1e2d45] bg-[#0a0f1e] text-slate-100
+           px-4 py-2.5 text-sm placeholder-slate-500
+           focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent
+           transition;
+  }
 
-::-webkit-scrollbar-thumb:hover {
-  background: #94a3b8;
-} 
+  /* Primary button */
+  .btn-primary {
+    @apply inline-flex items-center justify-center gap-2
+           rounded-lg bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700
+           text-white text-sm font-medium
+           px-4 py-2.5
+           transition focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 focus:ring-offset-slate-900
+           disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+
+  /* Ghost button */
+  .btn-ghost {
+    @apply inline-flex items-center justify-center gap-2
+           rounded-lg border border-[#1e2d45] hover:border-[#2a3f5a] hover:bg-[#1a2235]
+           text-slate-300 text-sm font-medium
+           px-4 py-2.5
+           transition focus:outline-none focus:ring-2 focus:ring-slate-500 focus:ring-offset-2 focus:ring-offset-slate-900
+           disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+
+  /* Page wrapper */
+  .page-container {
+    @apply max-w-6xl mx-auto px-6 py-8;
+  }
+
+  /* Badge */
+  .badge {
+    @apply inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium;
+  }
+}
