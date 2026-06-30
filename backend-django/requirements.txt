@@ -1,12 +1,14 @@
-Django
-djangorestframework
-django-cors-headers
-djangorestframework-simplejwt
-django-environ
-# Pillow: no Python 3.14 wheels available yet — install manually when 3.14 support ships
-Pillow
-requests
-python-dotenv
-PyJWT
-livekit
+Django==4.2.7
+djangorestframework==3.14.0
+django-cors-headers==4.3.0
+djangorestframework-simplejwt==5.5.1
+django-environ==0.11.2
+setuptools>=70.0
+# Pillow: no Python 3.14 wheels yet — add back when 3.14 support ships
+# Pillow==11.2.1
+requests==2.31.0
+python-dotenv==1.0.0
+PyJWT==2.8.0
+livekit==0.11.1          # real-time participant SDK (used by ai_service in Phase E)
+livekit-api==1.1.1       # server SDK: AccessToken + VideoGrants for token generation
 # psycopg2-binary: add back when switching from SQLite to PostgreSQL

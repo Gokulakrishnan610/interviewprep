@@ -1,9 +1,14 @@
+import logging
 import uuid
+
+from django.conf import settings as django_settings
 from django.utils import timezone
 from django.shortcuts import get_object_or_404
 from rest_framework import viewsets, permissions, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
+
+from livekit.api import AccessToken, VideoGrants
 
 from rooms.models import InterviewRoomTemplate
 from .models import InterviewSession, FeedbackReport
@@ -15,39 +20,32 @@ from .serializers import (
     FeedbackReportCreateSerializer,
 )
 
+logger = logging.getLogger(__name__)
+
 
 def _generate_livekit_token(user, room_name: str) -> str:
     """
-    Generate a LiveKit access token with VideoGrant using the livekit-server-sdk.
-    Returns the signed JWT string.
+    Generate a signed LiveKit access token using the official livekit-api SDK.
 
-    NOTE: This uses the livekit Python SDK (livekit>=0.11).
-    If the SDK is not yet installed, it falls back to a stub so Django
-    does not crash — the token will say 'livekit-sdk-not-installed'.
-    Phase D will replace this stub with the real SDK call.
+    Uses LIVEKIT_API_KEY and LIVEKIT_API_SECRET from Django settings (sourced
+    from .env).  Grants room_join for the given room_name, identified by the
+    user's pk, with their display name.
     """
-    try:
-        from livekit import AccessToken, VideoGrants
-        grants = VideoGrants(room_join=True, room=room_name)
-        token = (
-            AccessToken()
-            .with_identity(str(user.id))
-            .with_name(f'{user.first_name} {user.last_name}'.strip() or user.email)
-            .with_grants(grants)
-        )
-        from django.conf import settings as django_settings
-        return token.to_jwt(
+    display_name = f'{user.first_name} {user.last_name}'.strip() or user.email
+
+    grants = VideoGrants(room_join=True, room=room_name)
+
+    token = (
+        AccessToken(
             api_key=django_settings.LIVEKIT_API_KEY,
             api_secret=django_settings.LIVEKIT_API_SECRET,
         )
-    except ImportError:
-        # livekit SDK not yet installed — Phase D will fix this
-        return 'livekit-sdk-not-installed'
-    except Exception as exc:
-        # Log and return empty string so the session can still be created
-        import logging
-        logging.getLogger(__name__).error('LiveKit token generation failed: %s', exc)
-        return ''
+        .with_identity(str(user.pk))
+        .with_name(display_name)
+        .with_grants(grants)
+    )
+
+    return token.to_jwt()
 
 
 class InterviewSessionViewSet(viewsets.GenericViewSet):
@@ -108,11 +106,27 @@ class InterviewSessionViewSet(viewsets.GenericViewSet):
     @action(detail=True, methods=['post'])
     def start(self, request, pk=None):
         """
-        Transitions the session to in_progress, generates a LiveKit room
-        name and token, and returns both to the client.
-        The client then connects to LiveKit directly.
+        POST /api/sessions/{id}/start/
+
+        Validates ownership (get_queryset already filters by user).
+        Transitions status: scheduled → in_progress.
+        Generates a unique LiveKit room name and a signed access token.
+        Returns the token and room details so the client can connect directly.
+
+        Idempotent for in_progress sessions: returns existing room + a fresh token
+        so a reconnect after a page refresh works without creating a new room.
         """
         session = get_object_or_404(self.get_queryset(), pk=pk)
+
+        if session.status == 'in_progress':
+            # Already started — issue a fresh token for the existing room.
+            livekit_token = _generate_livekit_token(request.user, session.livekit_room_name)
+            return Response({
+                'session': InterviewSessionDetailSerializer(session).data,
+                'livekit_token': livekit_token,
+                'livekit_room_name': session.livekit_room_name,
+                'livekit_url': django_settings.LIVEKIT_URL,
+            })
 
         if session.status != 'scheduled':
             return Response(
@@ -120,7 +134,7 @@ class InterviewSessionViewSet(viewsets.GenericViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        # Generate a unique LiveKit room name
+        # Generate a unique LiveKit room name and sign the token.
         room_name = f'interview-{uuid.uuid4().hex[:12]}'
         livekit_token = _generate_livekit_token(request.user, room_name)
 
@@ -133,7 +147,7 @@ class InterviewSessionViewSet(viewsets.GenericViewSet):
             'session': InterviewSessionDetailSerializer(session).data,
             'livekit_token': livekit_token,
             'livekit_room_name': room_name,
-            'livekit_url': _get_livekit_url(),
+            'livekit_url': django_settings.LIVEKIT_URL,
         })
 
     # -------------------------------------------------------------- complete
@@ -204,7 +218,3 @@ class InterviewSessionViewSet(viewsets.GenericViewSet):
             status=status.HTTP_201_CREATED,
         )
 
-
-def _get_livekit_url():
-    from django.conf import settings as django_settings
-    return getattr(django_settings, 'LIVEKIT_API_URL', '')

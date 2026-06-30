@@ -10,8 +10,14 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/5.2/ref/settings/
 """
 
+import os
 from pathlib import Path
 from datetime import timedelta
+
+# Load .env file into os.environ early so all settings can use os.environ.get().
+# python-dotenv is already in requirements.txt.
+from dotenv import load_dotenv
+load_dotenv(Path(__file__).resolve().parent.parent / '.env')
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -35,10 +41,10 @@ FRONTEND_URL = 'http://localhost:3000'
 FASTAPI_URL = 'http://localhost:8002'
 
 # LiveKit Integration
-LIVEKIT_API_KEY = 'APIabMqmQ8P4aRx'
-LIVEKIT_API_SECRET = 'BrhWkwtTeBmYqeMIXEOqpnQFhG3Vvkfz3bffOezzKJQK'
-
-LIVEKIT_API_URL = 'wss://interviewapp-86itzjcd.livekit.cloud'  # Default LiveKit server URL
+# Keys are read from environment / .env — never commit real values to source.
+LIVEKIT_API_KEY    = os.environ.get('LIVEKIT_API_KEY',    'dev-api-key-not-set')
+LIVEKIT_API_SECRET = os.environ.get('LIVEKIT_API_SECRET', 'dev-api-secret-not-set')
+LIVEKIT_URL        = os.environ.get('LIVEKIT_URL',        'wss://your-livekit-instance.livekit.cloud')
 
 
 # CORS settings
