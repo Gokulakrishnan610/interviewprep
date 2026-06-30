@@ -1,32 +1,22 @@
 """
-WebSocket interview conductor.
+WebSocket interview conductor — thin IO layer.
 
 Endpoint: WS /ws/interview/{session_id}?token=<access_jwt>
 
-Full flow per connection
-────────────────────────
-1. Authenticate user from ?token= query param (JWT).
-2. Load the InterviewSession from Postgres — assert in_progress + owned by user.
-3. Load/restore interview state from Redis (reconnect-safe).
-4. Push "connected" message with current progress.
-5. If turn_number == 0 (fresh start), push the first question immediately.
-6. Enter the receive loop:
-     answer        → persist turn to DB, advance state, push next question
-                     (or push session_ended when all turns are done)
-     audio_answer  → scaffold stub, Phase 5 will invoke Deepgram STT here
-     ping          → push pong
-     end_session   → mark session complete, push session_ended, exit loop
-7. On disconnect / error: persist partial state to Redis before exiting.
+Responsibilities here
+─────────────────────
+  1. JWT auth via query param
+  2. Load + validate DB session
+  3. Init/restore Redis state
+  4. Accept WebSocket and register with ConnectionManager
+  5. Push "connected" + first question on fresh connect
+  6. Receive loop: parse message type, delegate to InterviewOrchestrator
+  7. Persist state on disconnect
 
-Question generation (Phase 5 placeholder)
-──────────────────────────────────────────
-`_get_question()` returns a canned question for now.
-Phase 5 will replace this with a Gemini call using the room_template's
-interviewer_persona + competencies + prior turns as context.
+All business logic lives in InterviewOrchestrator (app/services/interview_orchestrator.py).
 """
 from __future__ import annotations
 
-import json
 import logging
 from datetime import datetime, timezone
 
@@ -35,11 +25,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import AsyncSessionLocal
 from app.core.redis import get_redis_pool
-from app.integrations.deepgram_client import DeepgramClient
-from app.integrations.gemini_client import GeminiClient
+from app.repositories.session_repository import SessionRepository
+from app.services.interview_orchestrator import InterviewOrchestrator
 from app.websocket.connection_manager import manager
 from app.websocket.schemas import (
     InboundAnswer,
+    InboundAudioChunk,
     InboundAudioAnswer,
     InboundEndSession,
     InboundPing,
@@ -48,7 +39,7 @@ from app.websocket.schemas import (
     msg_pong,
     msg_question,
     msg_session_ended,
-    msg_turn_saved,
+    msg_thinking,
     parse_inbound,
 )
 from app.websocket.session_state import (
@@ -67,107 +58,69 @@ from app.websocket.ws_auth import (
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["WebSocket"])
 
-# ── Helpers ───────────────────────────────────────────────────────────────────
-
 
 def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
 
-async def _get_question(
-    turn_number: int,
-    room_template,
-    prior_turns: list[dict],
-) -> str:
-    """
-    Return the question text for the given turn.
-    Delegates to GeminiClient; falls back to persona-aware placeholder
-    if Gemini is unconfigured or returns an error.
-    """
-    client = GeminiClient()
-    result = await client.generate_question(
-        turn_number=turn_number,
-        room_title=room_template.title,
-        interviewer_name=room_template.interviewer_name or "Alex",
-        interviewer_persona=room_template.interviewer_persona or "",
-        round_type=room_template.round_type,
-        competencies=room_template.competencies or [],
-        prior_turns=prior_turns,
-    )
-    return result.question_text
-
-
-def _total_turns_for_template(room_template) -> int:
-    """
-    Determine total number of turns from room_template.
-    Uses len(competencies) + 1 (intro), capped to a sensible range.
-    Phase 5: may be driven by Gemini conversation plan instead.
-    """
-    n = len(room_template.competencies or []) + 1  # +1 for intro
-    return max(2, min(n, 10))  # floor=2, ceiling=10
-
-
-# ── WebSocket endpoint ────────────────────────────────────────────────────────
-
+# ── Endpoint ──────────────────────────────────────────────────────────────────
 
 @router.websocket("/ws/interview/{session_id}")
 async def interview_websocket(websocket: WebSocket, session_id: int) -> None:
-    """
-    Main WebSocket endpoint for the realtime interview conductor.
-    Uses its own DB session (not the request-scoped get_db dependency,
-    which doesn't apply to WebSocket connections).
-    """
     async with AsyncSessionLocal() as db:
-        await _conduct_interview(websocket, session_id, db)
+        await _conduct(websocket, session_id, db)
 
 
 # ── Conductor ─────────────────────────────────────────────────────────────────
 
-
-async def _conduct_interview(
-    websocket: WebSocket, session_id: int, db: AsyncSession
-) -> None:
+async def _conduct(websocket: WebSocket, session_id: int, db: AsyncSession) -> None:
     redis = get_redis_pool()
 
-    # ── Step 1: Authenticate ──────────────────────────────────────────────────
+    # ── Auth ──────────────────────────────────────────────────────────────────
     user = await get_ws_user(websocket, db)
     if user is None:
-        return  # ws_auth already closed the socket
+        return
 
-    # ── Step 2: Load & validate session ──────────────────────────────────────
-    from app.repositories.session_repository import SessionRepository
-
+    # ── Load session ──────────────────────────────────────────────────────────
     repo = SessionRepository(db)
     session = await repo.get_user_session(session_id, user.id)
 
     if session is None:
-        await _accept_and_close(
-            websocket, WS_CLOSE_NOT_FOUND, "Session not found."
-        )
+        await _reject(websocket, WS_CLOSE_NOT_FOUND, "Session not found.")
         return
 
     if session.status != "in_progress":
-        await _accept_and_close(
+        await _reject(
             websocket,
             WS_CLOSE_FORBIDDEN,
-            f'Session is not in_progress (current status: "{session.status}").',
+            f'Session is not in_progress (status: "{session.status}").',
         )
         return
 
-    room_template = session.room_template
-    total_turns = _total_turns_for_template(room_template)
+    room = session.room_template
+    total_turns = InterviewOrchestrator.total_turns_for_template(room)
 
-    # ── Step 3: Connect & restore state ──────────────────────────────────────
+    # ── Connect & restore state ───────────────────────────────────────────────
     await manager.connect(session_id, websocket)
 
-    state: InterviewState = await load_state(redis, session_id) or await init_state(
-        redis, session_id, total_turns=total_turns
+    state: InterviewState = (
+        await load_state(redis, session_id)
+        or await init_state(redis, session_id, total_turns=total_turns)
+    )
+    state.total_turns = total_turns  # re-sync in case template changed
+
+    # ── Build orchestrator ────────────────────────────────────────────────────
+    orchestrator = InterviewOrchestrator(
+        session_id=session_id,
+        room_template=room,
+        state=state,
+        repo=repo,
+        redis=redis,
+        manager=manager,
+        db=db,
     )
 
-    # Sync total_turns in case template changed (unlikely, but safe)
-    state.total_turns = total_turns
-
-    # ── Step 4: Send "connected" ──────────────────────────────────────────────
+    # ── Send initial state ────────────────────────────────────────────────────
     await manager.send_json(
         session_id,
         msg_connected(
@@ -177,9 +130,10 @@ async def _conduct_interview(
         ),
     )
 
-    # ── Step 5: Push first question if fresh start ────────────────────────────
+    # ── Push turn-0 question on fresh start ───────────────────────────────────
     if state.turn_number == 0:
-        question_text = await _get_question(0, room_template, [])
+        await manager.send_json(session_id, msg_thinking())
+        question_text = await orchestrator._generate_question(0, [])
         await manager.send_json(
             session_id,
             msg_question(
@@ -188,7 +142,6 @@ async def _conduct_interview(
                 total_turns=state.total_turns,
             ),
         )
-        # Persist this turn to DB immediately (so it survives a disconnect)
         await repo.create_turn(
             session_id=session_id,
             turn_number=0,
@@ -197,7 +150,7 @@ async def _conduct_interview(
         )
         await repo.commit()
 
-    # ── Step 6: Receive loop ──────────────────────────────────────────────────
+    # ── Receive loop ──────────────────────────────────────────────────────────
     try:
         while True:
             try:
@@ -210,7 +163,7 @@ async def _conduct_interview(
             if msg is None:
                 await manager.send_json(
                     session_id,
-                    msg_error(f"Unknown message type: {raw.get('type')}"),
+                    msg_error(f"Unknown message type: '{raw.get('type')}'."),
                 )
                 continue
 
@@ -221,210 +174,67 @@ async def _conduct_interview(
 
             # ── end_session ───────────────────────────────────────────────────
             if isinstance(msg, InboundEndSession):
-                await _handle_end_session(
-                    session_id=session_id,
-                    state=state,
-                    repo=repo,
-                    redis=redis,
-                    db=db,
-                )
+                await orchestrator.on_end_session()
                 await manager.send_json(session_id, msg_session_ended(session_id))
                 break
 
-            # ── audio_answer — transcribe with Deepgram then treat as answer ──
-            if isinstance(msg, InboundAudioAnswer):
-                deepgram = DeepgramClient()
-                if not deepgram.is_configured():
-                    await manager.send_json(
-                        session_id,
-                        msg_error(
-                            "Audio transcription is not configured on this server. "
-                            "Please submit your answer as text using type='answer'."
-                        ),
-                    )
-                    continue
-
-                transcript_result = await deepgram.transcribe_base64(
+            # ── audio_chunk (streaming) ───────────────────────────────────────
+            if isinstance(msg, InboundAudioChunk):
+                await orchestrator.on_audio_chunk(
                     msg.audio_data,
-                    mime_type=msg.mime_type,
+                    msg.mime_type,
+                    msg.chunk_final,
                 )
-
-                if not transcript_result.transcript.strip():
-                    await manager.send_json(
-                        session_id,
-                        msg_error("Could not transcribe audio. Please try again or use text."),
-                    )
-                    continue
-
-                # Feed the transcribed text into the normal answer flow
-                await _handle_answer(
-                    websocket=websocket,
-                    session_id=session_id,
-                    state=state,
-                    answer_text=transcript_result.transcript,
-                    room_template=room_template,
-                    repo=repo,
-                    redis=redis,
-                    db=db,
-                )
-
                 if state.status == "ending":
-                    await _handle_end_session(
-                        session_id=session_id,
-                        state=state,
-                        repo=repo,
-                        redis=redis,
-                        db=db,
-                    )
+                    await orchestrator.on_end_session()
                     await manager.send_json(session_id, msg_session_ended(session_id))
                     break
                 continue
 
-            # ── answer ────────────────────────────────────────────────────────
-            if isinstance(msg, InboundAnswer):
-                await _handle_answer(
-                    websocket=websocket,
-                    session_id=session_id,
-                    state=state,
-                    answer_text=msg.text,
-                    room_template=room_template,
-                    repo=repo,
-                    redis=redis,
-                    db=db,
+            # ── audio_answer (complete blob) ──────────────────────────────────
+            if isinstance(msg, InboundAudioAnswer):
+                # Treat as a single-chunk final flush
+                await orchestrator.on_audio_chunk(
+                    msg.audio_data,
+                    msg.mime_type,
+                    chunk_final=True,
                 )
-
-                # All turns answered → end automatically
                 if state.status == "ending":
-                    await _handle_end_session(
-                        session_id=session_id,
-                        state=state,
-                        repo=repo,
-                        redis=redis,
-                        db=db,
-                    )
+                    await orchestrator.on_end_session()
+                    await manager.send_json(session_id, msg_session_ended(session_id))
+                    break
+                continue
+
+            # ── text answer ───────────────────────────────────────────────────
+            if isinstance(msg, InboundAnswer):
+                await orchestrator.on_answer(msg.text)
+                if state.status == "ending":
+                    await orchestrator.on_end_session()
                     await manager.send_json(session_id, msg_session_ended(session_id))
                     break
 
     except WebSocketDisconnect:
-        logger.info("WebSocket disconnected mid-session: session=%s", session_id)
-        # Persist partial state so reconnect resumes from the right turn
+        logger.info("WS disconnected mid-session: session=%s turn=%s",
+                    session_id, state.turn_number)
         await save_state(redis, state)
+
     except Exception as exc:
-        logger.exception("Unexpected error in WS conductor for session %s: %s", session_id, exc)
+        logger.exception("Unhandled error in WS conductor session=%s: %s", session_id, exc)
         try:
-            await manager.send_json(session_id, msg_error("An internal error occurred."))
+            await manager.send_json(
+                session_id, msg_error("An internal error occurred.", recoverable=False)
+            )
         except Exception:
             pass
         await save_state(redis, state)
+
     finally:
         manager.disconnect(session_id)
 
 
-# ── Action handlers ───────────────────────────────────────────────────────────
-
-
-async def _handle_answer(
-    *,
-    websocket: WebSocket,
-    session_id: int,
-    state: InterviewState,
-    answer_text: str,
-    room_template,
-    repo,
-    redis,
-    db: AsyncSession,
-) -> None:
-    """
-    1. Persist the answer to the current turn in DB.
-    2. Advance turn counter.
-    3. Either push the next question or mark state as "ending".
-    """
-    current_turn = state.turn_number
-
-    # Find the existing DB turn record (created when question was pushed)
-    existing_turn = await repo.get_turn(session_id, current_turn)
-    if existing_turn is not None:
-        await repo.update_turn_answer(
-            existing_turn,
-            answer_text=answer_text.strip(),
-            answered_at=_utcnow(),
-        )
-        await repo.commit()
-
-    await manager.send_json(session_id, msg_turn_saved(current_turn))
-
-    # Advance
-    state.turn_number += 1
-    await save_state(redis, state)
-
-    # Check if interview is complete
-    if state.turn_number >= state.total_turns:
-        state.status = "ending"
-        await save_state(redis, state)
-        return
-
-    # Push next question — build prior_turns context for Gemini
-    prior_turns_ctx = [
-        {
-            "turn": t.turn_number,
-            "question": t.question_text,
-            "answer": t.answer_text,
-        }
-        for t in (await repo.get_turns_for_session(session_id))
-        if t.answer_text  # only include answered turns
-    ] if hasattr(repo, "get_turns_for_session") else []
-
-    next_question = await _get_question(
-        state.turn_number,
-        room_template,
-        prior_turns=prior_turns_ctx,
-    )
-    await manager.send_json(
-        session_id,
-        msg_question(
-            turn_number=state.turn_number,
-            question_text=next_question,
-            total_turns=state.total_turns,
-        ),
-    )
-
-    # Persist the new question turn record immediately
-    await repo.create_turn(
-        session_id=session_id,
-        turn_number=state.turn_number,
-        question_text=next_question,
-        asked_at=_utcnow(),
-    )
-    await repo.commit()
-
-
-async def _handle_end_session(
-    *,
-    session_id: int,
-    state: InterviewState,
-    repo,
-    redis,
-    db: AsyncSession,
-) -> None:
-    """
-    Mark the DB session as completed and clean up Redis state.
-    Report generation (Gemini analysis) is triggered in Phase 5.
-    """
-    from app.repositories.session_repository import SessionRepository
-
-    session = await repo.get_by_id(session_id)
-    if session and session.status == "in_progress":
-        await repo.complete(session, ended_at=_utcnow())
-        await repo.commit()
-        logger.info("Session %s marked completed via WS conductor", session_id)
-
-    await clear_state(redis, session_id)
-
-
 # ── Utility ───────────────────────────────────────────────────────────────────
 
-
-async def _accept_and_close(websocket: WebSocket, code: int, reason: str) -> None:
+async def _reject(websocket: WebSocket, code: int, reason: str) -> None:
     try:
         await websocket.accept()
         await websocket.close(code=code, reason=reason)
