@@ -16,8 +16,10 @@ from app.schemas.sessions import (
     FeedbackReportResponse,
     InterviewSessionDetailResponse,
     InterviewSessionListResponse,
+    ReportStatusResponse,
     SessionStartResponse,
 )
+from app.tasks.report_tasks import get_report_status, schedule_report
 
 logger = logging.getLogger(__name__)
 
@@ -150,6 +152,11 @@ class SessionService:
 
         session = await self._repo.complete(session, ended_at=_utcnow())
         await self._repo.commit()
+
+        # Fire report generation in the background — non-blocking
+        schedule_report(session_id)
+        logger.info("Report task scheduled after REST complete for session %s", session_id)
+
         return InterviewSessionDetailResponse.from_orm(session)
 
     # ── Cancel ────────────────────────────────────────────────────────────────
@@ -185,7 +192,7 @@ class SessionService:
         if session.report is None:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="No report available yet for this session.",
+                detail="Report not available yet. Check GET /sessions/{id}/report/status.",
             )
         return FeedbackReportResponse.model_validate(session.report)
 

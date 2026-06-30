@@ -15,7 +15,6 @@ Responsibilities
 """
 from __future__ import annotations
 
-import asyncio
 import base64
 import logging
 from datetime import datetime, timezone
@@ -26,6 +25,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.integrations.deepgram_client import DeepgramClient
 from app.integrations.gemini_client import GeminiClient
 from app.repositories.session_repository import SessionRepository
+from app.tasks.report_tasks import schedule_report
 from app.websocket.connection_manager import ConnectionManager
 from app.websocket.schemas import (
     msg_error,
@@ -144,7 +144,7 @@ class InterviewOrchestrator:
     async def on_end_session(self) -> None:
         """
         Mark the DB session as completed, clean Redis state, and
-        kick off async feedback generation (fire-and-forget).
+        kick off report generation via the shared task (fire-and-forget).
         """
         session = await self._repo.get_by_id(self._session_id)
         if session and session.status == "in_progress":
@@ -154,12 +154,9 @@ class InterviewOrchestrator:
 
         await clear_state(self._redis, self._session_id)
 
-        # Fire-and-forget feedback generation.
-        # Runs in a separate task so the WS can send session_ended immediately.
-        asyncio.create_task(
-            self._generate_feedback_task(),
-            name=f"feedback-{self._session_id}",
-        )
+        # Delegate to the shared report task — not a private method anymore
+        schedule_report(self._session_id)
+        logger.info("Report task scheduled for session %s by orchestrator", self._session_id)
 
     # ── Internal helpers ──────────────────────────────────────────────────────
 
@@ -265,70 +262,6 @@ class InterviewOrchestrator:
 
         # Route through the normal text-answer path
         await self.on_answer(result.transcript)
-
-    async def _generate_feedback_task(self) -> None:
-        """
-        Background task: call Gemini to score all turns, then write a
-        FeedbackReport to the DB.
-
-        Runs after the WebSocket has already closed — uses a fresh DB session
-        from the factory so the parent session is no longer needed.
-        """
-        from app.core.database import AsyncSessionLocal
-
-        try:
-            async with AsyncSessionLocal() as db:
-                repo = SessionRepository(db)
-                session = await repo.get_by_id(self._session_id)
-
-                if session is None:
-                    logger.error("Feedback task: session %s not found", self._session_id)
-                    return
-
-                if session.report is not None:
-                    logger.info("Feedback task: report already exists for session %s", self._session_id)
-                    return
-
-                turns = await repo.get_turns_for_session(self._session_id)
-                turn_dicts = [
-                    {
-                        "turn": t.turn_number,
-                        "question": t.question_text,
-                        "answer": t.answer_text or "(no answer)",
-                    }
-                    for t in turns
-                ]
-
-                room = session.room_template
-                gemini = GeminiClient()
-                feedback = await gemini.generate_feedback(
-                    room_title=room.title,
-                    interviewer_persona=room.interviewer_persona or "",
-                    round_type=room.round_type,
-                    rubric_dimensions=room.rubric_dimensions or [],
-                    turns=turn_dicts,
-                )
-
-                await repo.create_report(
-                    session_id=self._session_id,
-                    overall_score=feedback.overall_score,
-                    dimension_scores=feedback.dimension_scores,
-                    strengths=feedback.strengths,
-                    weaknesses=feedback.weaknesses,
-                    recommendations=feedback.recommendations,
-                    raw_ai_response=feedback.raw_response,
-                )
-                await repo.commit()
-                logger.info(
-                    "Feedback report created for session %s (score=%.1f)",
-                    self._session_id,
-                    feedback.overall_score,
-                )
-
-        except Exception as exc:
-            logger.exception(
-                "Feedback task failed for session %s: %s", self._session_id, exc
-            )
 
     # ── Utility ───────────────────────────────────────────────────────────────
 

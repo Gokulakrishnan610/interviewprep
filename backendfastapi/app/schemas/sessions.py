@@ -43,6 +43,21 @@ class FeedbackReportCreateRequest(BaseModel):
     raw_ai_response: str = ""
 
 
+# ── Report generation status ──────────────────────────────────────────────────
+
+class ReportStatusResponse(BaseModel):
+    session_id: int
+    status: str          # "pending" | "running" | "done" | "failed" | "unknown"
+    report_id: int | None = None   # populated when status == "done"
+    error: str | None = None       # populated when status == "failed"
+
+
+class ReportGenerateResponse(BaseModel):
+    session_id: int
+    status: str          # "pending" | "running" | "done"
+    message: str
+
+
 # ── InterviewSession list (compact) ───────────────────────────────────────────
 class InterviewSessionListResponse(BaseModel):
     id: int
