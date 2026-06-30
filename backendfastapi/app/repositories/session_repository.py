@@ -142,6 +142,15 @@ class SessionRepository:
             )
         )
         return result.scalar_one_or_none()
+
+    async def get_turns_for_session(self, session_id: int) -> list[InterviewTurn]:
+        """Return all turns for a session ordered by turn_number. Used for Gemini context."""
+        result = await self._db.execute(
+            select(InterviewTurn)
+            .where(InterviewTurn.session_id == session_id)
+            .order_by(InterviewTurn.turn_number)
+        )
+        return list(result.scalars().all())
     # ── Report queries ────────────────────────────────────────────────────────
     async def create_report(
         self,

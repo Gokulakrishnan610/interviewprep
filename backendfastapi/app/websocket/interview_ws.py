@@ -35,6 +35,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import AsyncSessionLocal
 from app.core.redis import get_redis_pool
+from app.integrations.deepgram_client import DeepgramClient
+from app.integrations.gemini_client import GeminiClient
 from app.websocket.connection_manager import manager
 from app.websocket.schemas import (
     InboundAnswer,
@@ -72,42 +74,27 @@ def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
 
-def _get_question(
+async def _get_question(
     turn_number: int,
     room_template,
-    prior_turns: list,
+    prior_turns: list[dict],
 ) -> str:
     """
     Return the question text for the given turn.
-
-    Phase 4: Returns a scaffold placeholder based on turn index and
-    the room_template's competencies list.
-    Phase 5: Replace with async Gemini call — full context injection.
+    Delegates to GeminiClient; falls back to persona-aware placeholder
+    if Gemini is unconfigured or returns an error.
     """
-    competencies: list[str] = room_template.competencies or []
-    persona_name: str = room_template.interviewer_name or "Alex"
-
-    if turn_number == 0:
-        return (
-            f"Hi, I'm {persona_name}. "
-            f"Welcome to your {room_template.title} interview. "
-            "Could you start by briefly introducing yourself and your background?"
-        )
-
-    # Map turn_number → competency (cycle through available ones)
-    if competencies:
-        competency = competencies[(turn_number - 1) % len(competencies)]
-        return (
-            f"Thank you. Now I'd like to explore your experience with "
-            f"**{competency.replace('_', ' ')}**. "
-            "Could you walk me through a specific example where this was important?"
-        )
-
-    # Fallback for rooms with no competencies configured
-    return (
-        f"Tell me about a challenging situation you faced in your work and "
-        f"how you handled it. (Question {turn_number + 1})"
+    client = GeminiClient()
+    result = await client.generate_question(
+        turn_number=turn_number,
+        room_title=room_template.title,
+        interviewer_name=room_template.interviewer_name or "Alex",
+        interviewer_persona=room_template.interviewer_persona or "",
+        round_type=room_template.round_type,
+        competencies=room_template.competencies or [],
+        prior_turns=prior_turns,
     )
+    return result.question_text
 
 
 def _total_turns_for_template(room_template) -> int:
@@ -192,7 +179,7 @@ async def _conduct_interview(
 
     # ── Step 5: Push first question if fresh start ────────────────────────────
     if state.turn_number == 0:
-        question_text = _get_question(0, room_template, [])
+        question_text = await _get_question(0, room_template, [])
         await manager.send_json(
             session_id,
             msg_question(
@@ -244,15 +231,53 @@ async def _conduct_interview(
                 await manager.send_json(session_id, msg_session_ended(session_id))
                 break
 
-            # ── audio_answer (Phase 5 stub) ───────────────────────────────────
+            # ── audio_answer — transcribe with Deepgram then treat as answer ──
             if isinstance(msg, InboundAudioAnswer):
-                await manager.send_json(
-                    session_id,
-                    msg_error(
-                        "Audio transcription not yet available. "
-                        "Please submit your answer as text using type='answer'."
-                    ),
+                deepgram = DeepgramClient()
+                if not deepgram.is_configured():
+                    await manager.send_json(
+                        session_id,
+                        msg_error(
+                            "Audio transcription is not configured on this server. "
+                            "Please submit your answer as text using type='answer'."
+                        ),
+                    )
+                    continue
+
+                transcript_result = await deepgram.transcribe_base64(
+                    msg.audio_data,
+                    mime_type=msg.mime_type,
                 )
+
+                if not transcript_result.transcript.strip():
+                    await manager.send_json(
+                        session_id,
+                        msg_error("Could not transcribe audio. Please try again or use text."),
+                    )
+                    continue
+
+                # Feed the transcribed text into the normal answer flow
+                await _handle_answer(
+                    websocket=websocket,
+                    session_id=session_id,
+                    state=state,
+                    answer_text=transcript_result.transcript,
+                    room_template=room_template,
+                    repo=repo,
+                    redis=redis,
+                    db=db,
+                )
+
+                if state.status == "ending":
+                    await _handle_end_session(
+                        session_id=session_id,
+                        state=state,
+                        repo=repo,
+                        redis=redis,
+                        db=db,
+                    )
+                    await manager.send_json(session_id, msg_session_ended(session_id))
+                    break
                 continue
 
             # ── answer ────────────────────────────────────────────────────────
@@ -338,11 +363,21 @@ async def _handle_answer(
         await save_state(redis, state)
         return
 
-    # Push next question
-    next_question = _get_question(
+    # Push next question — build prior_turns context for Gemini
+    prior_turns_ctx = [
+        {
+            "turn": t.turn_number,
+            "question": t.question_text,
+            "answer": t.answer_text,
+        }
+        for t in (await repo.get_turns_for_session(session_id))
+        if t.answer_text  # only include answered turns
+    ] if hasattr(repo, "get_turns_for_session") else []
+
+    next_question = await _get_question(
         state.turn_number,
         room_template,
-        prior_turns=[],  # Phase 5: pass actual prior turns for Gemini context
+        prior_turns=prior_turns_ctx,
     )
     await manager.send_json(
         session_id,

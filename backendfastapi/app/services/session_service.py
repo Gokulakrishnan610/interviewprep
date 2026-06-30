@@ -8,6 +8,7 @@ from fastapi import HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
+from app.integrations.livekit_client import LiveKitClient
 from app.repositories.room_repository import RoomRepository
 from app.repositories.session_repository import SessionRepository
 from app.schemas.sessions import (
@@ -26,28 +27,13 @@ def _utcnow() -> datetime:
 
 
 def _generate_livekit_token(user_id: int, display_name: str, room_name: str) -> str:
-    """
-    Generate a signed LiveKit JWT access token.
-    Full livekit-api integration wired in Phase 4 (LiveKit provider).
-    Returns a placeholder token string until then so the endpoint still works.
-    """
-    try:
-        from livekit.api import AccessToken, VideoGrants  # type: ignore[import]
-
-        grants = VideoGrants(room_join=True, room=room_name)
-        token = (
-            AccessToken(
-                api_key=settings.LIVEKIT_API_KEY,
-                api_secret=settings.LIVEKIT_API_SECRET,
-            )
-            .with_identity(str(user_id))
-            .with_name(display_name)
-            .with_grants(grants)
-        )
-        return token.to_jwt()
-    except Exception as exc:
-        logger.warning("LiveKit token generation failed: %s — returning placeholder", exc)
-        return f"livekit-placeholder-{room_name}"
+    """Delegate to LiveKitClient — all SDK logic lives in the integration layer."""
+    client = LiveKitClient()
+    return client.create_join_token(
+        user_id=user_id,
+        display_name=display_name,
+        room_name=room_name,
+    )
 
 
 class SessionService:
@@ -107,14 +93,17 @@ class SessionService:
 
         # Idempotent: already started → return a fresh token for the same room
         if session.status == "in_progress":
-            livekit_token = _generate_livekit_token(
-                user_id, display_name, session.livekit_room_name
+            lk = LiveKitClient()
+            livekit_token = lk.create_join_token(
+                user_id=user_id,
+                display_name=display_name,
+                room_name=session.livekit_room_name,
             )
             return SessionStartResponse(
                 session=InterviewSessionDetailResponse.from_orm(session),
                 livekit_token=livekit_token,
                 livekit_room_name=session.livekit_room_name,
-                livekit_url=settings.LIVEKIT_URL,
+                livekit_url=lk.server_url,
             )
 
         if session.status != "scheduled":
@@ -124,7 +113,12 @@ class SessionService:
             )
 
         room_name = f"interview-{uuid.uuid4().hex[:12]}"
-        livekit_token = _generate_livekit_token(user_id, display_name, room_name)
+        lk = LiveKitClient()
+        livekit_token = lk.create_join_token(
+            user_id=user_id,
+            display_name=display_name,
+            room_name=room_name,
+        )
 
         session = await self._repo.start(
             session, room_name=room_name, started_at=_utcnow()
@@ -135,7 +129,7 @@ class SessionService:
             session=InterviewSessionDetailResponse.from_orm(session),
             livekit_token=livekit_token,
             livekit_room_name=room_name,
-            livekit_url=settings.LIVEKIT_URL,
+            livekit_url=lk.server_url,
         )
 
     # ── Complete ──────────────────────────────────────────────────────────────
