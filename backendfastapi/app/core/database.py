@@ -1,65 +1,56 @@
-from sqlalchemy import create_engine
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker
-from sqlalchemy import inspect, text
+from __future__ import annotations
+
+from collections.abc import AsyncGenerator
+
+from sqlalchemy.ext.asyncio import (
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
+)
+from sqlalchemy.orm import DeclarativeBase
 
 from app.core.config import settings
 
-SQLALCHEMY_DATABASE_URL = settings.DATABASE_URL
-
-engine = create_engine(
-    SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False}
+# ── Engine ────────────────────────────────────────────────────────────────────
+# echo=True in DEBUG prints every SQL statement — helpful during development.
+engine = create_async_engine(
+    settings.DATABASE_URL,
+    echo=settings.DEBUG,
+    pool_pre_ping=True,          # drop stale connections before use
+    pool_size=10,
+    max_overflow=20,
 )
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
-Base = declarative_base()
+# ── Session factory ───────────────────────────────────────────────────────────
+AsyncSessionLocal = async_sessionmaker(
+    bind=engine,
+    class_=AsyncSession,
+    expire_on_commit=False,      # keep ORM objects usable after commit
+    autoflush=False,
+    autocommit=False,
+)
 
-def init_db():
-    from app import models  # noqa: F401
 
-    Base.metadata.create_all(bind=engine)
-    _ensure_existing_sqlite_columns()
+# ── Declarative base ──────────────────────────────────────────────────────────
+class Base(DeclarativeBase):
+    """
+    All SQLAlchemy models inherit from this base.
+    Alembic's env.py imports Base.metadata for autogenerate.
+    """
+    pass
 
-def _ensure_existing_sqlite_columns():
-    if not SQLALCHEMY_DATABASE_URL.startswith("sqlite"):
-        return
 
-    required_columns = {
-        "interviews": {
-            "title": "VARCHAR DEFAULT 'Mock Interview'",
-            "room_token": "VARCHAR",
-            "room_name": "VARCHAR",
-            "avatar_id": "VARCHAR DEFAULT '694c83e2-8895-4a98-bd16-56332ca3f449'",
-            "interview_type": "VARCHAR DEFAULT 'technical'",
-            "difficulty_level": "VARCHAR DEFAULT 'beginner'",
-            "duration_minutes": "INTEGER DEFAULT 30",
-            "scheduled_time": "DATETIME",
-            "score": "FLOAT",
-        },
-        "interview_analytics": {
-            "strengths": "TEXT",
-        },
-    }
-
-    with engine.begin() as connection:
-        inspector = inspect(connection)
-        table_names = set(inspector.get_table_names())
-
-        for table_name, columns in required_columns.items():
-            if table_name not in table_names:
-                continue
-
-            existing_columns = {column["name"] for column in inspector.get_columns(table_name)}
-            for column_name, column_definition in columns.items():
-                if column_name not in existing_columns:
-                    connection.execute(
-                        text(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_definition}")
-                    )
-
-# Dependency
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
+# ── Dependency ────────────────────────────────────────────────────────────────
+async def get_db() -> AsyncGenerator[AsyncSession, None]:
+    """
+    FastAPI dependency that yields a database session per request
+    and guarantees it is closed on exit (even on exceptions).
+    """
+    async with AsyncSessionLocal() as session:
+        try:
+            yield session
+        except Exception:
+            await session.rollback()
+            raise
+        finally:
+            await session.close()
