@@ -39,7 +39,7 @@ class InterviewSession(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
     
     class Meta:
-        db_table = 'interview_sessions'
+        db_table = 'legacy_interview_sessions'
 
 class InterviewFeedback(models.Model):
     session = models.OneToOneField(InterviewSession, on_delete=models.CASCADE)

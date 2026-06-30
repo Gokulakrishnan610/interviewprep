@@ -87,9 +87,9 @@ INSTALLED_APPS = [
     'corsheaders',
     # Local apps
     'users',
-    'interviews',
     'rooms',
     'sessions',
+    # 'interviews' removed — superseded by the rooms + sessions apps (Phase C)
 ]
 
 AUTH_USER_MODEL = 'users.User'

@@ -1,11 +1,12 @@
-Django==4.2.7
-djangorestframework==3.14.0
-django-cors-headers==4.3.0
-djangorestframework-simplejwt==5.3.0
-django-environ==0.11.2
-Pillow==10.1.0
-requests==2.31.0
-python-dotenv==1.0.0
-PyJWT==2.8.0
-livekit==0.11.1
-psycopg2-binary==2.9.9
+Django
+djangorestframework
+django-cors-headers
+djangorestframework-simplejwt
+django-environ
+# Pillow: no Python 3.14 wheels available yet — install manually when 3.14 support ships
+Pillow
+requests
+python-dotenv
+PyJWT
+livekit
+# psycopg2-binary: add back when switching from SQLite to PostgreSQL
