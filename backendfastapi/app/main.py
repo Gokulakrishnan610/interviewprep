@@ -58,13 +58,13 @@ app.add_middleware(
 
 
 # ── Routers ───────────────────────────────────────────────────────────────────
-from app.api.routes import auth  # noqa: E402
+from app.api.routes import auth, rooms, sessions  # noqa: E402
 
 app.include_router(auth.router)
+app.include_router(rooms.router)
+app.include_router(sessions.router)
 
-# Phase 3:  from app.api.routes import rooms;    app.include_router(rooms.router, ...)
-# Phase 4:  from app.api.routes import sessions; app.include_router(sessions.router, ...)
-# Phase 5:  from app.websocket import router as ws_router; app.include_router(ws_router)
+# Phase 4:  from app.websocket import router as ws_router; app.include_router(ws_router)
 
 
 # ── Health check ─────────────────────────────────────────────────────────────

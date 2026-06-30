@@ -66,9 +66,11 @@ class User(Base):
         cascade="all, delete-orphan",
         lazy="selectin",  # always load profile alongside user
     )
-
-    # Added in later phases:
-    # sessions: Mapped[list[InterviewSession]] = relationship(...)
+    sessions: Mapped[list] = relationship(
+        "InterviewSession",
+        back_populates="user",
+        lazy="noload",  # never eager-loaded — use session queries directly
+    )
 
     def __repr__(self) -> str:
         return f"<User id={self.id} email={self.email!r}>"
