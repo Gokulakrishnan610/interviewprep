@@ -58,6 +58,12 @@ class User(Base):
         DateTime(timezone=True), default=_now, onupdate=_now, nullable=False
     )
 
+    # Admin flag — set directly in DB or via admin API, never user-settable
+    is_admin: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+
+    # Roles
+    is_admin: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+
     # Relationships
     profile: Mapped[UserProfile] = relationship(
         "UserProfile",

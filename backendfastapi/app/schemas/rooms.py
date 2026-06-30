@@ -79,7 +79,7 @@ class RoomTemplateDetailResponse(RoomTemplateListResponse):
         )
 
 
-# ── Admin create/update (used in future admin routes) ─────────────────────────
+# ── Admin create/update (used in admin routes) ────────────────────────────────
 class RoomTemplateCreateRequest(BaseModel):
     slug: str = Field(min_length=1, max_length=100)
     title: str = Field(min_length=1, max_length=200)
@@ -94,3 +94,24 @@ class RoomTemplateCreateRequest(BaseModel):
     competencies: list[str] = []
     rubric_dimensions: list[dict] = []
     is_active: bool = True
+
+
+class RoomTemplateUpdateRequest(BaseModel):
+    """All fields optional — supports partial PATCH."""
+    slug: str | None = Field(default=None, min_length=1, max_length=100)
+    title: str | None = Field(default=None, min_length=1, max_length=200)
+    description: str | None = None
+    company: str | None = None
+    role: str | None = Field(default=None, min_length=1, max_length=100)
+    round_type: str | None = Field(
+        default=None, pattern="^(behavioral|technical|system_design|hr|mixed)$"
+    )
+    difficulty: str | None = Field(
+        default=None, pattern="^(beginner|intermediate|advanced)$"
+    )
+    duration_minutes: int | None = Field(default=None, ge=5, le=180)
+    interviewer_name: str | None = Field(default=None, max_length=100)
+    interviewer_persona: str | None = None
+    competencies: list[str] | None = None
+    rubric_dimensions: list[dict] | None = None
+    is_active: bool | None = None

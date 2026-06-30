@@ -39,8 +39,12 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title=settings.APP_NAME,
     version=settings.VERSION,
-    description="Standalone AI interview preparation backend.",
-    default_response_class=ORJSONResponse,  # faster JSON serialisation
+    description=(
+        "Interview Prep AI — standalone FastAPI backend. "
+        "Provides auth, room templates, session lifecycle, "
+        "realtime WebSocket interview conductor, and AI-generated feedback reports."
+    ),
+    default_response_class=ORJSONResponse,
     docs_url="/docs" if settings.DEBUG else None,
     redoc_url="/redoc" if settings.DEBUG else None,
     openapi_url="/openapi.json" if settings.DEBUG else None,
@@ -58,12 +62,13 @@ app.add_middleware(
 
 
 # ── Routers ───────────────────────────────────────────────────────────────────
-from app.api.routes import auth, rooms, sessions  # noqa: E402
+from app.api.routes import admin, auth, rooms, sessions  # noqa: E402
 from app.websocket import router as ws_router  # noqa: E402
 
 app.include_router(auth.router)
 app.include_router(rooms.router)
 app.include_router(sessions.router)
+app.include_router(admin.router)
 app.include_router(ws_router)
 
 
