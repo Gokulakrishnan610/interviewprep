@@ -1,2 +1,4 @@
-# WebSocket interview conductor.
-# Connection manager and real-time interview handler added in Phase 8.
+# WebSocket interview conductor package.
+# Exports the router that main.py mounts.
+
+from app.websocket.interview_ws import router  # noqa: F401
