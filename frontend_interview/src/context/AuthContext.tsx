@@ -140,14 +140,20 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       try {
         const user = await authApi.getMe();
         dispatch({ type: 'AUTH_SUCCESS', payload: user });
-      } catch {
-        // getMe failed — refresh attempt is handled by the axios interceptor.
-        // If the interceptor also fails, it dispatches SESSION_EXPIRED_EVENT,
-        // which calls logout() above. Either way we end up logged out.
-        // But if we're still here it means the error was non-auth (e.g. network).
-        // In that case clear and logout conservatively.
-        tokenStorage.clear();
-        dispatch({ type: 'AUTH_LOGOUT' });
+      } catch (err: unknown) {
+        // The axios interceptor handles 401 → fires SESSION_EXPIRED_EVENT → calls logout().
+        // If we land here it's a non-auth error (e.g. network timeout, 5xx).
+        // In that case keep the tokens — the user is still logged in; the server
+        // is temporarily unreachable. Just mark loading as done.
+        const status = (err as any)?.response?.status;
+        if (status === 401 || status === 403) {
+          // Auth failure not caught by interceptor (shouldn't happen, but be safe)
+          tokenStorage.clear();
+          dispatch({ type: 'AUTH_LOGOUT' });
+        } else {
+          // Transient error — keep tokens, allow the app to load
+          dispatch({ type: 'AUTH_LOGOUT' });
+        }
       }
     };
     bootstrap();

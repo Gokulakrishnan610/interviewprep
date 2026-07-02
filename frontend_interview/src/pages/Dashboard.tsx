@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
-  Calendar, LayoutGrid, TrendingUp, ArrowRight,
+  Calendar, LayoutGrid, ArrowRight,
   CheckCircle2, PlayCircle, TimerIcon, ChevronRight,
+  AlertCircle,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { sessionsApi } from '../api/sessions';
@@ -17,17 +18,15 @@ const STATUS_STYLE: Record<SessionStatus, string> = {
   cancelled:   'bg-slate-600/40 text-slate-400',
 };
 
-const STATUS_ICON: Record<SessionStatus, React.FC<{ className?: string }>> = {
+const STATUS_ICON: Record<SessionStatus, React.FC<{ className?: string }> | null> = {
   scheduled:   TimerIcon,
   in_progress: PlayCircle,
   completed:   CheckCircle2,
-  cancelled:   () => null,
+  cancelled:   null,
 };
 
 function formatDate(iso: string): string {
-  return new Date(iso).toLocaleDateString(undefined, {
-    month: 'short', day: 'numeric',
-  });
+  return new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 }
 
 // ── Dashboard ─────────────────────────────────────────────────────────────────
@@ -37,23 +36,28 @@ const Dashboard: React.FC = () => {
   const { state: authState } = useAuth();
   const user = authState.user;
 
-  const [recentSessions, setRecentSessions] = useState<InterviewSessionSummary[]>([]);
+  // Fetch all sessions so stats are accurate (not just the last 5)
+  const [allSessions, setAllSessions]       = useState<InterviewSessionSummary[]>([]);
   const [sessionsLoading, setSessionsLoading] = useState(true);
+  const [sessionsError, setSessionsError]   = useState(false);
 
   useEffect(() => {
     sessionsApi
       .list()
-      .then((all) => setRecentSessions(all.slice(0, 5)))
-      .catch(() => {/* silently ignore on dashboard */})
+      .then(setAllSessions)
+      .catch(() => setSessionsError(true))
       .finally(() => setSessionsLoading(false));
   }, []);
 
-  // Aggregate stats from real data
-  const completed = recentSessions.filter((s) => s.status === 'completed');
+  // Derived stats
+  const completed = allSessions.filter((s) => s.status === 'completed');
   const scored    = completed.filter((s) => s.overall_score !== null);
   const avgScore  = scored.length
     ? (scored.reduce((sum, s) => sum + s.overall_score!, 0) / scored.length).toFixed(1)
     : null;
+
+  // Most recent 5 for the activity list
+  const recentSessions = allSessions.slice(0, 5);
 
   return (
     <div className="page-container">
@@ -72,25 +76,25 @@ const Dashboard: React.FC = () => {
           <span className="shrink-0">⚠</span>
           <span>
             Your email isn't verified yet.{' '}
-            <Link to="/verify-email" className="underline hover:text-amber-200">
+            <Link to="/verify-email" className="underline hover:text-amber-200 transition">
               Resend link
             </Link>
           </span>
         </div>
       )}
 
-      {/* Stats row */}
-      {!sessionsLoading && recentSessions.length > 0 && (
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-8">
+      {/* Stats row — only shown once data is loaded and non-empty */}
+      {!sessionsLoading && !sessionsError && allSessions.length > 0 && (
+        <div className="grid grid-cols-3 gap-3 mb-8">
           <div className="card py-4 text-center">
-            <p className="text-2xl font-bold text-slate-100">{recentSessions.length}</p>
+            <p className="text-2xl font-bold text-slate-100">{allSessions.length}</p>
             <p className="text-xs text-slate-500 mt-0.5">Total sessions</p>
           </div>
           <div className="card py-4 text-center">
             <p className="text-2xl font-bold text-slate-100">{completed.length}</p>
             <p className="text-xs text-slate-500 mt-0.5">Completed</p>
           </div>
-          <div className="card py-4 text-center col-span-2 sm:col-span-1">
+          <div className="card py-4 text-center">
             <p className="text-2xl font-bold text-indigo-400">
               {avgScore ? `${avgScore}/10` : '—'}
             </p>
@@ -100,7 +104,7 @@ const Dashboard: React.FC = () => {
       )}
 
       {/* Quick actions */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-8">
         <Link
           to="/rooms"
           className="group card hover:border-indigo-500/40 hover:bg-[#1a2235] transition cursor-pointer"
@@ -128,20 +132,18 @@ const Dashboard: React.FC = () => {
           <h3 className="font-semibold text-slate-100 mb-1">My Sessions</h3>
           <p className="text-sm text-slate-400">Review your past interviews and reports.</p>
         </Link>
-
-        <div className="card opacity-60 cursor-default">
-          <div className="flex items-start justify-between mb-3">
-            <div className="w-10 h-10 rounded-lg bg-emerald-600/20 flex items-center justify-center">
-              <TrendingUp className="w-5 h-5 text-emerald-400" />
-            </div>
-          </div>
-          <h3 className="font-semibold text-slate-100 mb-1">Progress</h3>
-          <p className="text-sm text-slate-400">Analytics coming soon.</p>
-        </div>
       </div>
 
+      {/* Session list error */}
+      {!sessionsLoading && sessionsError && (
+        <div className="card flex items-center gap-3 text-sm text-slate-400 mb-4">
+          <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />
+          Could not load session history. Please refresh.
+        </div>
+      )}
+
       {/* Recent sessions */}
-      {!sessionsLoading && recentSessions.length > 0 && (
+      {!sessionsLoading && !sessionsError && recentSessions.length > 0 && (
         <div className="card">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-sm font-semibold text-slate-300 uppercase tracking-wider">
@@ -154,7 +156,7 @@ const Dashboard: React.FC = () => {
               View all <ChevronRight className="w-3.5 h-3.5" />
             </Link>
           </div>
-          <div className="space-y-2">
+          <div className="space-y-1">
             {recentSessions.map((s) => {
               const Icon = STATUS_ICON[s.status];
               const isClickable = s.status !== 'cancelled';
@@ -169,7 +171,7 @@ const Dashboard: React.FC = () => {
                   className={`flex items-center gap-3 rounded-lg px-3 py-2.5 transition-all
                     ${isClickable
                       ? 'hover:bg-[#1a2235] cursor-pointer'
-                      : 'opacity-50 cursor-default'
+                      : 'opacity-40 cursor-default'
                     }`}
                 >
                   <div className={`w-7 h-7 rounded-md flex items-center justify-center shrink-0 ${STATUS_STYLE[s.status]}`}>
@@ -196,11 +198,21 @@ const Dashboard: React.FC = () => {
         </div>
       )}
 
+      {/* Empty state — first time user */}
+      {!sessionsLoading && !sessionsError && allSessions.length === 0 && (
+        <div className="card text-center py-10">
+          <Calendar className="w-8 h-8 text-slate-600 mx-auto mb-3" />
+          <p className="text-slate-300 font-medium mb-1">No sessions yet</p>
+          <p className="text-sm text-slate-500 mb-5">
+            Start your first interview by picking a room.
+          </p>
+          <Link to="/rooms" className="btn-primary">Browse rooms</Link>
+        </div>
+      )}
+
       {/* Account card */}
       <div className="card mt-4">
-        <h2 className="text-sm font-semibold text-slate-300 uppercase tracking-wider mb-4">
-          Account
-        </h2>
+        <h2 className="text-sm font-semibold text-slate-300 uppercase tracking-wider mb-4">Account</h2>
         <div className="flex items-center gap-4">
           <div className="w-12 h-12 rounded-full bg-indigo-600 flex items-center justify-center text-lg font-bold text-white shrink-0">
             {[user?.first_name?.[0], user?.last_name?.[0]].filter(Boolean).join('').toUpperCase() || 'U'}

@@ -356,7 +356,19 @@ const Rooms: React.FC = () => {
             <AlertCircle className="w-8 h-8 text-red-400" />
             <p className="text-sm">{fetchError}</p>
             <button
-              onClick={() => { setFetchError(null); setIsLoading(true); roomsApi.list().then(setRooms).catch(() => {}).finally(() => setIsLoading(false)); }}
+              onClick={() => {
+                setFetchError(null);
+                setIsLoading(true);
+                roomsApi
+                  .list()
+                  .then(setRooms)
+                  .catch((err) => {
+                    setFetchError(
+                      err.response?.data?.detail || 'Failed to load rooms. Please try again.'
+                    );
+                  })
+                  .finally(() => setIsLoading(false));
+              }}
               className="btn-ghost text-xs"
             >
               Retry

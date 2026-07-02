@@ -81,11 +81,22 @@ export interface InterviewTurn {
 export interface FeedbackReport {
   id: number;
   overall_score: number | null;
-  dimension_scores: Record<string, number>;
+  // Keys are rubric dimension names (e.g. "clarity", "ownership").
+  // May contain a nested "hf_competency_scores" sub-object — strip before display.
+  dimension_scores: Record<string, number | Record<string, number>>;
   strengths: string[];
   weaknesses: string[];
   recommendations: string[];
   created_at: string;
+}
+
+export type ReportGenerationStatus = 'pending' | 'running' | 'done' | 'failed' | 'unknown';
+
+export interface ReportStatus {
+  session_id: number;
+  status: ReportGenerationStatus;
+  report_id: number | null;
+  error: string | null;
 }
 
 export interface InterviewSessionSummary {
@@ -119,18 +130,24 @@ export interface SessionStartResponse {
 }
 
 // ── WebSocket messages ────────────────────────────────────────────────────────
+// These match the backend schemas.py exactly.
 
 // Client → Server
-export type WsClientMessage =
-  | { type: 'audio_chunk'; data: string }
-  | { type: 'end_answer' }
+export type WsOutboundMessage =
+  | { type: 'audio_chunk'; audio_data: string; mime_type: string; chunk_final: boolean }
+  | { type: 'audio_answer'; audio_data: string; mime_type: string }
+  | { type: 'answer'; text: string }
+  | { type: 'ping' }
   | { type: 'end_session' };
 
 // Server → Client
-export type WsServerMessage =
-  | { type: 'question'; text: string; turn_index: number }
+export type WsInboundMessage =
+  | { type: 'connected'; session_id: number; turn_number: number; total_turns: number }
+  | { type: 'thinking' }
+  | { type: 'question'; turn_number: number; question_text: string; total_turns: number }
   | { type: 'transcript_partial'; text: string }
-  | { type: 'transcript_final'; text: string }
-  | { type: 'follow_up'; text: string }
-  | { type: 'session_complete'; report_ready: boolean }
-  | { type: 'error'; message: string };
+  | { type: 'transcript_final'; text: string; confidence: number }
+  | { type: 'turn_saved'; turn_number: number }
+  | { type: 'session_ended'; session_id: number; message: string }
+  | { type: 'error'; detail: string; recoverable: boolean }
+  | { type: 'pong' };

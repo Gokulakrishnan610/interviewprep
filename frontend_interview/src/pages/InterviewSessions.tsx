@@ -69,7 +69,7 @@ const SessionRow: React.FC<{ session: InterviewSessionSummary }> = ({ session })
     >
       {/* Status icon */}
       <div className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${cfg.style}`}>
-        <Icon className="w-4.5 h-4.5 w-[18px] h-[18px]" />
+        <Icon className="w-[18px] h-[18px]" />
       </div>
 
       {/* Room info */}
