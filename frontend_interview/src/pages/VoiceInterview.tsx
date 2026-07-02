@@ -1,16 +1,17 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import {
   Loader2, AlertCircle, Clock, Mic, MicOff, ArrowLeft,
   ChevronRight, CheckCircle2, PhoneOff, Wifi, WifiOff,
-  MessageSquare,
+  Volume2, VolumeX,
 } from 'lucide-react';
 import { sessionsApi } from '../api/sessions';
 import { tokenStorage } from '../api/client';
 import { useInterviewSocket } from '../hooks/useInterviewSocket';
+import type { TurnHistoryEntry } from '../hooks/useInterviewSocket';
 import type { InterviewSessionDetail, SessionStartResponse } from '../types';
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+// ── Design helpers ────────────────────────────────────────────────────────────
 
 const DIFFICULTY_STYLE: Record<string, string> = {
   beginner:     'bg-emerald-500/15 text-emerald-300',
@@ -18,9 +19,154 @@ const DIFFICULTY_STYLE: Record<string, string> = {
   advanced:     'bg-rose-500/15 text-rose-300',
 };
 
-// ── Pre-interview lobby ───────────────────────────────────────────────────────
-// Shown while the session is still "scheduled". Clicking "Start" calls
-// POST /sessions/{id}/start and switches to the live room.
+// ── Interviewer avatar ────────────────────────────────────────────────────────
+// Animated circle reflecting thinking / speaking / idle states
+
+interface AvatarProps {
+  name: string;
+  isThinking: boolean;
+  isSpeaking: boolean;
+  isConnecting: boolean;
+}
+
+const InterviewerAvatar: React.FC<AvatarProps> = ({
+  name, isThinking, isSpeaking, isConnecting,
+}) => {
+  const initial = name?.[0]?.toUpperCase() ?? 'AI';
+
+  return (
+    <div className="flex flex-col items-center gap-2">
+      <div className="relative">
+        {/* Outer pulse ring — only while speaking */}
+        {isSpeaking && (
+          <span className="absolute inset-0 rounded-full bg-indigo-500/20 animate-ping" />
+        )}
+        {/* Second slower ring while thinking */}
+        {isThinking && (
+          <span className="absolute -inset-2 rounded-full border border-indigo-500/20 animate-pulse" />
+        )}
+        <div className={`
+          relative w-14 h-14 rounded-full flex items-center justify-center
+          text-lg font-bold transition-all duration-300
+          ${isConnecting
+            ? 'bg-slate-700 text-slate-500'
+            : isThinking
+              ? 'bg-indigo-600/30 border-2 border-indigo-500/40 text-indigo-300'
+              : isSpeaking
+                ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/40'
+                : 'bg-indigo-600/20 border border-indigo-500/30 text-indigo-300'
+          }
+        `}>
+          {isConnecting ? <Loader2 className="w-5 h-5 animate-spin" /> : initial}
+        </div>
+      </div>
+
+      {/* State label */}
+      <p className="text-xs text-slate-500 h-4">
+        {isConnecting ? 'Connecting…'
+          : isThinking  ? 'Thinking…'
+          : isSpeaking  ? 'Speaking'
+          : name || 'AI Interviewer'}
+      </p>
+    </div>
+  );
+};
+
+// ── Audio visualiser ──────────────────────────────────────────────────────────
+// Reads real amplitude from the mic stream while recording.
+
+interface VisualiserProps {
+  stream: MediaStream | null;
+  isActive: boolean;
+}
+
+const AudioVisualiser: React.FC<VisualiserProps> = ({ stream, isActive }) => {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const rafRef    = useRef<number>(0);
+  const ctxRef    = useRef<AudioContext | null>(null);
+  const analyserRef = useRef<AnalyserNode | null>(null);
+
+  useEffect(() => {
+    if (!isActive || !stream) {
+      cancelAnimationFrame(rafRef.current);
+      return;
+    }
+
+    const audioCtx = new AudioContext();
+    const analyser = audioCtx.createAnalyser();
+    analyser.fftSize = 64;
+    audioCtx.createMediaStreamSource(stream).connect(analyser);
+    ctxRef.current = audioCtx;
+    analyserRef.current = analyser;
+
+    const data = new Uint8Array(analyser.frequencyBinCount);
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx2d = canvas.getContext('2d');
+    if (!ctx2d) return;
+
+    const draw = () => {
+      analyser.getByteFrequencyData(data);
+      ctx2d.clearRect(0, 0, canvas.width, canvas.height);
+      const barW = canvas.width / data.length;
+      data.forEach((val, i) => {
+        const h = (val / 255) * canvas.height;
+        const alpha = 0.4 + (val / 255) * 0.6;
+        ctx2d.fillStyle = `rgba(239,68,68,${alpha})`;
+        ctx2d.fillRect(i * barW, canvas.height - h, barW - 1, h);
+      });
+      rafRef.current = requestAnimationFrame(draw);
+    };
+    draw();
+
+    return () => {
+      cancelAnimationFrame(rafRef.current);
+      audioCtx.close();
+    };
+  }, [isActive, stream]);
+
+  if (!isActive) return null;
+
+  return (
+    <canvas
+      ref={canvasRef}
+      width={80}
+      height={24}
+      className="rounded opacity-80"
+      aria-hidden="true"
+    />
+  );
+};
+
+// ── Turn history log ──────────────────────────────────────────────────────────
+
+const TurnHistory: React.FC<{ entries: TurnHistoryEntry[] }> = ({ entries }) => {
+  if (entries.length === 0) return null;
+  return (
+    <div className="space-y-3">
+      {entries.map((entry) => (
+        <div key={entry.turnNumber} className="rounded-xl border border-[#1e2d45] overflow-hidden opacity-70">
+          {/* Question */}
+          <div className="px-4 py-2.5 bg-[#111827]">
+            <p className="text-xs text-indigo-400 font-medium mb-1">
+              Q{entry.turnNumber + 1}
+            </p>
+            <p className="text-sm text-slate-300 leading-relaxed">{entry.question}</p>
+          </div>
+          {/* Answer */}
+          {entry.answer && (
+            <div className="px-4 py-2.5 bg-[#0a0f1e] border-t border-[#1e2d45]">
+              <p className="text-xs text-slate-500 font-medium mb-1">Your answer</p>
+              <p className="text-sm text-slate-400 leading-relaxed">{entry.answer}</p>
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+};
+
+// ── Lobby ─────────────────────────────────────────────────────────────────────
 
 interface LobbyProps {
   session: InterviewSessionDetail;
@@ -45,7 +191,6 @@ const Lobby: React.FC<LobbyProps> = ({ session, onStart, onCancel, isStarting, s
               <p className="text-slate-400 text-sm">{room.role}</p>
             </div>
           </div>
-
           <div className="grid grid-cols-2 gap-3 text-sm">
             <div className="bg-[#0a0f1e] rounded-lg p-3">
               <p className="text-xs text-slate-500 mb-1">Type</p>
@@ -71,7 +216,6 @@ const Lobby: React.FC<LobbyProps> = ({ session, onStart, onCancel, isStarting, s
               </div>
             )}
           </div>
-
           {room.competencies?.length > 0 && (
             <div className="mt-4 flex flex-wrap gap-1.5">
               {room.competencies.map((c: string) => (
@@ -80,14 +224,12 @@ const Lobby: React.FC<LobbyProps> = ({ session, onStart, onCancel, isStarting, s
             </div>
           )}
         </div>
-
         {startError && (
           <div className="flex items-center gap-2 bg-red-500/10 border border-red-500/20 text-red-400 rounded-lg px-4 py-3 text-sm mb-4">
             <AlertCircle className="w-4 h-4 shrink-0" />
             {startError}
           </div>
         )}
-
         <div className="bg-[#111827] border border-[#1e2d45] rounded-xl p-4 mb-4 text-sm text-slate-400">
           <p className="font-medium text-slate-300 mb-2">Before you start</p>
           <ul className="space-y-1 list-disc list-inside">
@@ -96,7 +238,6 @@ const Lobby: React.FC<LobbyProps> = ({ session, onStart, onCancel, isStarting, s
             <li>Hold the mic button to speak your answer, release when done.</li>
           </ul>
         </div>
-
         <button onClick={onStart} disabled={isStarting} className="btn-primary w-full text-base py-3">
           {isStarting
             ? <><Loader2 className="w-4 h-4 animate-spin" /> Starting…</>
@@ -113,13 +254,12 @@ const Lobby: React.FC<LobbyProps> = ({ session, onStart, onCancel, isStarting, s
 interface LiveRoomProps {
   sessionId: number;
   accessToken: string;
-  roomTitle: string;
   interviewerName: string;
   onSessionEnded: (endedId: number) => void;
 }
 
 const LiveRoom: React.FC<LiveRoomProps> = ({
-  sessionId, accessToken, roomTitle, interviewerName, onSessionEnded,
+  sessionId, accessToken, interviewerName, onSessionEnded,
 }) => {
   const {
     state: ws,
@@ -129,43 +269,59 @@ const LiveRoom: React.FC<LiveRoomProps> = ({
     stopRecording,
     endSession,
     clearWarning,
+    cancelSpeech,
   } = useInterviewSocket(sessionId, accessToken);
 
-  // Connect WS and request mic on mount
+  // Expose the mic stream so AudioVisualiser can read it
+  const [micStream, setMicStream] = useState<MediaStream | null>(null);
+  // TTS mute preference (persisted per session in memory)
+  const [ttsEnabled, setTtsEnabled] = useState(true);
+
   useEffect(() => {
-    connect();
-    requestMic();
+    const init = async () => {
+      connect();
+      // Request mic and capture the stream reference for the visualiser
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+        setMicStream(stream);
+      } catch { /* handled by the hook's warning */ }
+      requestMic();
+    };
+    init();
   }, [connect, requestMic]);
 
-  // Navigate away when server confirms session ended
+  // Mute/unmute TTS
+  useEffect(() => {
+    if (!ttsEnabled) cancelSpeech();
+  }, [ttsEnabled, cancelSpeech]);
+
   useEffect(() => {
     if (ws.sessionEnded && ws.endedSessionId !== null) {
       onSessionEnded(ws.endedSessionId);
     }
   }, [ws.sessionEnded, ws.endedSessionId, onSessionEnded]);
 
-  // ── Mic button handlers (press-and-hold) ────────────────────────────────
   const handleMicDown = useCallback(() => {
-    if (!ws.micGranted || ws.isThinking || !ws.currentQuestion) return;
+    if (!ws.micGranted || ws.isThinking || ws.isSpeaking || !ws.currentQuestion) return;
+    cancelSpeech();   // stop TTS if user starts speaking
     startRecording();
-  }, [ws.micGranted, ws.isThinking, ws.currentQuestion, startRecording]);
+  }, [ws.micGranted, ws.isThinking, ws.isSpeaking, ws.currentQuestion, cancelSpeech, startRecording]);
 
   const handleMicUp = useCallback(() => {
     if (!ws.isRecording) return;
     stopRecording();
   }, [ws.isRecording, stopRecording]);
 
-  const progress = ws.totalTurns > 0
-    ? Math.round((ws.turnNumber / ws.totalTurns) * 100)
-    : 0;
+  const progress  = ws.totalTurns > 0 ? Math.round((ws.turnNumber / ws.totalTurns) * 100) : 0;
+  const isConnecting = ws.connectionStatus === 'connecting';
 
   const canRecord = ws.connectionStatus === 'connected'
     && ws.micGranted
     && !ws.isThinking
+    && !ws.isSpeaking
     && ws.currentQuestion !== null
     && !ws.isRecording;
 
-  // ── Fatal error ────────────────────────────────────────────────────────
   if (ws.fatalError) {
     return (
       <div className="flex-1 flex items-center justify-center px-4">
@@ -181,106 +337,134 @@ const LiveRoom: React.FC<LiveRoomProps> = ({
     );
   }
 
-  // ── Render ─────────────────────────────────────────────────────────────
   return (
-    <div className="flex-1 flex flex-col max-w-2xl mx-auto w-full px-4 py-6 gap-5">
+    <div className="flex-1 flex flex-col max-w-2xl mx-auto w-full px-4 py-5 gap-4">
 
-      {/* Connection + progress bar */}
+      {/* ── Top bar: connection + progress + controls ── */}
       <div className="flex items-center gap-3">
         <div className="flex items-center gap-1.5 text-xs">
           {ws.connectionStatus === 'connected'
             ? <Wifi className="w-3.5 h-3.5 text-emerald-400" />
             : <WifiOff className="w-3.5 h-3.5 text-slate-500" />}
           <span className={ws.connectionStatus === 'connected' ? 'text-emerald-400' : 'text-slate-500'}>
-            {ws.connectionStatus === 'connecting' ? 'Connecting…' : ws.connectionStatus}
+            {isConnecting ? 'Connecting…' : ws.connectionStatus}
           </span>
         </div>
+
         {ws.totalTurns > 0 && (
           <div className="flex-1 flex items-center gap-2">
             <div className="flex-1 h-1.5 bg-[#1e2d45] rounded-full overflow-hidden">
               <div
-                className="h-full bg-indigo-500 rounded-full transition-all duration-500"
+                className="h-full bg-indigo-500 rounded-full transition-all duration-700"
                 style={{ width: `${progress}%` }}
               />
             </div>
-            <span className="text-xs text-slate-500 shrink-0">
+            <span className="text-xs text-slate-500 shrink-0 tabular-nums">
               {ws.turnNumber + 1}/{ws.totalTurns}
             </span>
           </div>
         )}
+
+        {/* TTS toggle */}
+        {'speechSynthesis' in window && (
+          <button
+            onClick={() => setTtsEnabled(v => !v)}
+            title={ttsEnabled ? 'Mute interviewer voice' : 'Unmute interviewer voice'}
+            className="text-slate-500 hover:text-slate-300 transition"
+            aria-label={ttsEnabled ? 'Mute' : 'Unmute'}
+          >
+            {ttsEnabled
+              ? <Volume2 className="w-4 h-4" />
+              : <VolumeX className="w-4 h-4" />}
+          </button>
+        )}
+
         <button
           onClick={endSession}
           title="End interview"
-          className="ml-auto flex items-center gap-1.5 text-xs text-slate-500 hover:text-red-400 border border-[#1e2d45] hover:border-red-500/30 rounded-lg px-3 py-1.5 transition"
+          className="flex items-center gap-1.5 text-xs text-slate-500 hover:text-red-400 border border-[#1e2d45] hover:border-red-500/30 rounded-lg px-3 py-1.5 transition"
         >
           <PhoneOff className="w-3.5 h-3.5" />
           End
         </button>
       </div>
 
-      {/* Recoverable warning */}
+      {/* ── Recoverable warning ── */}
       {ws.warning && (
         <div className="flex items-start gap-2 bg-amber-500/10 border border-amber-500/20 text-amber-300 rounded-lg px-4 py-3 text-sm">
           <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
           <span className="flex-1">{ws.warning}</span>
-          <button onClick={clearWarning} className="text-amber-300/60 hover:text-amber-300">✕</button>
+          <button onClick={clearWarning} className="text-amber-300/60 hover:text-amber-300 transition">✕</button>
         </div>
       )}
 
-      {/* Interviewer name */}
-      <div className="flex items-center gap-2 text-slate-500 text-sm">
-        <div className="w-7 h-7 rounded-full bg-indigo-600/20 flex items-center justify-center text-xs font-bold text-indigo-300">
-          {interviewerName?.[0] ?? 'AI'}
-        </div>
-        <span>{interviewerName || 'AI Interviewer'}</span>
+      {/* ── Interviewer avatar ── */}
+      <div className="flex justify-center py-2">
+        <InterviewerAvatar
+          name={interviewerName}
+          isThinking={ws.isThinking}
+          isSpeaking={ws.isSpeaking}
+          isConnecting={isConnecting}
+        />
       </div>
 
-      {/* Question / thinking area */}
-      <div className="card min-h-[120px] flex items-center justify-center">
-        {ws.connectionStatus === 'connecting' && (
-          <div className="flex flex-col items-center gap-2 text-slate-500">
-            <Loader2 className="w-5 h-5 animate-spin" />
+      {/* ── Turn history (collapsed past Q&As) ── */}
+      <TurnHistory entries={ws.turnHistory} />
+
+      {/* ── Current question card ── */}
+      <div className="card min-h-[100px] flex items-start justify-start">
+        {isConnecting && (
+          <div className="flex items-center gap-2 text-slate-500 m-auto">
+            <Loader2 className="w-4 h-4 animate-spin" />
             <p className="text-sm">Connecting to interview server…</p>
           </div>
         )}
-        {ws.isThinking && (
-          <div className="flex flex-col items-center gap-2 text-slate-500">
+        {!isConnecting && ws.isThinking && (
+          <div className="flex flex-col items-center gap-2 text-slate-500 m-auto">
             <div className="flex gap-1.5">
-              <span className="w-2 h-2 rounded-full bg-indigo-400 animate-bounce" style={{ animationDelay: '0ms' }} />
-              <span className="w-2 h-2 rounded-full bg-indigo-400 animate-bounce" style={{ animationDelay: '150ms' }} />
-              <span className="w-2 h-2 rounded-full bg-indigo-400 animate-bounce" style={{ animationDelay: '300ms' }} />
+              {[0, 150, 300].map((delay) => (
+                <span
+                  key={delay}
+                  className="w-2 h-2 rounded-full bg-indigo-400 animate-bounce"
+                  style={{ animationDelay: `${delay}ms` }}
+                />
+              ))}
             </div>
             <p className="text-sm">Preparing next question…</p>
           </div>
         )}
-        {!ws.isThinking && ws.currentQuestion && (
+        {!isConnecting && !ws.isThinking && ws.currentQuestion && (
           <p className="text-slate-100 text-base leading-relaxed">{ws.currentQuestion}</p>
         )}
-        {!ws.isThinking && !ws.currentQuestion && ws.connectionStatus === 'connected' && (
-          <p className="text-slate-500 text-sm">Waiting for the interview to begin…</p>
+        {!isConnecting && !ws.isThinking && !ws.currentQuestion && ws.connectionStatus === 'connected' && (
+          <p className="text-slate-500 text-sm m-auto">Waiting for the interview to begin…</p>
         )}
       </div>
 
-      {/* Transcript area */}
+      {/* ── Transcript ── */}
       {(ws.transcriptPartial || ws.transcriptFinal) && (
-        <div className="bg-[#111827] border border-[#1e2d45] rounded-xl p-4">
-          <div className="flex items-center gap-2 text-xs text-slate-500 mb-2">
-            <MessageSquare className="w-3.5 h-3.5" />
+        <div className="bg-[#111827] border border-[#1e2d45] rounded-xl px-4 py-3">
+          <p className="text-xs text-slate-500 mb-1.5">
             {ws.transcriptFinal ? 'Your answer' : 'Transcribing…'}
-          </div>
-          <p className={`text-sm leading-relaxed ${ws.transcriptFinal ? 'text-slate-200' : 'text-slate-400 italic'}`}>
+          </p>
+          <p className={`text-sm leading-relaxed ${
+            ws.transcriptFinal ? 'text-slate-200' : 'text-slate-400 italic'
+          }`}>
             {ws.transcriptFinal || ws.transcriptPartial}
           </p>
         </div>
       )}
 
-      {/* Mic button */}
-      <div className="flex flex-col items-center gap-3 mt-auto">
+      {/* ── Mic button + visualiser ── */}
+      <div className="flex flex-col items-center gap-3 mt-auto pb-4">
         {!ws.micGranted && (
           <p className="text-xs text-amber-300 text-center">
             Microphone access required — please allow it in your browser.
           </p>
         )}
+
+        {/* Visualiser bar sits above the button */}
+        <AudioVisualiser stream={micStream} isActive={ws.isRecording} />
 
         <button
           onMouseDown={handleMicDown}
@@ -288,7 +472,7 @@ const LiveRoom: React.FC<LiveRoomProps> = ({
           onTouchStart={handleMicDown}
           onTouchEnd={handleMicUp}
           disabled={!canRecord && !ws.isRecording}
-          aria-label={ws.isRecording ? 'Release to stop recording' : 'Hold to speak'}
+          aria-label={ws.isRecording ? 'Release to submit answer' : 'Hold to speak'}
           className={`
             relative w-20 h-20 rounded-full flex items-center justify-center
             transition-all duration-150 select-none
@@ -297,30 +481,27 @@ const LiveRoom: React.FC<LiveRoomProps> = ({
               ? 'bg-red-500 shadow-lg shadow-red-500/40 scale-110'
               : canRecord
                 ? 'bg-indigo-600 hover:bg-indigo-500 shadow-lg shadow-indigo-600/30 active:scale-95'
-                : 'bg-slate-700 opacity-50 cursor-not-allowed'
+                : 'bg-slate-700 opacity-40 cursor-not-allowed'
             }
           `}
         >
           {ws.isRecording
             ? <MicOff className="w-8 h-8 text-white" />
-            : <Mic className="w-8 h-8 text-white" />}
-
-          {/* Pulse ring while recording */}
+            : <Mic    className="w-8 h-8 text-white" />}
           {ws.isRecording && (
             <span className="absolute inset-0 rounded-full bg-red-500/30 animate-ping" />
           )}
         </button>
 
-        <p className="text-xs text-slate-500">
-          {ws.isRecording
-            ? 'Release to submit answer'
-            : ws.isThinking
-              ? 'Please wait…'
-              : ws.currentQuestion
-                ? 'Hold to speak'
-                : ''}
+        <p className="text-xs text-slate-500 h-4">
+          {ws.isRecording   ? 'Release to submit answer'
+            : ws.isSpeaking ? 'Interviewer is speaking…'
+            : ws.isThinking ? 'Please wait…'
+            : canRecord     ? 'Hold to speak'
+            : ''}
         </p>
       </div>
+
     </div>
   );
 };
@@ -334,15 +515,12 @@ const VoiceInterview: React.FC = () => {
   const [session, setSession]         = useState<InterviewSessionDetail | null>(null);
   const [isLoading, setIsLoading]     = useState(true);
   const [fetchError, setFetchError]   = useState<string | null>(null);
-
   const [isStarting, setIsStarting]   = useState(false);
   const [startError, setStartError]   = useState<string | null>(null);
-  // accessToken is set after POST /sessions/{id}/start — passed to LiveRoom
   const [accessToken, setAccessToken] = useState<string | null>(null);
 
   const numericId = sessionId ? Number(sessionId) : null;
 
-  // ── Fetch session ────────────────────────────────────────────────────────
   useEffect(() => {
     if (!numericId || isNaN(numericId)) {
       setFetchError('Invalid session ID.');
@@ -353,18 +531,12 @@ const VoiceInterview: React.FC = () => {
       .getById(numericId)
       .then((s) => {
         setSession(s);
-        // If the session is already in_progress (e.g. page refresh),
-        // immediately enter the live room using the stored access token
-        if (s.status === 'in_progress') {
-          const token = tokenStorage.getAccess();
-          setAccessToken(token);
-        }
+        if (s.status === 'in_progress') setAccessToken(tokenStorage.getAccess());
       })
       .catch((err) => setFetchError(err.response?.data?.detail || 'Session not found.'))
       .finally(() => setIsLoading(false));
   }, [numericId]);
 
-  // ── Start session ────────────────────────────────────────────────────────
   const handleStart = useCallback(async () => {
     if (!session) return;
     setIsStarting(true);
@@ -372,8 +544,6 @@ const VoiceInterview: React.FC = () => {
     try {
       const data: SessionStartResponse = await sessionsApi.start(session.id);
       setSession(data.session);
-      // Use the stored access token for WS auth (the start endpoint doesn't
-      // re-issue tokens — the same JWT is used for both REST and WS)
       setAccessToken(tokenStorage.getAccess());
     } catch (err: any) {
       setStartError(err.response?.data?.detail || 'Could not start interview. Please try again.');
@@ -382,18 +552,16 @@ const VoiceInterview: React.FC = () => {
     }
   }, [session]);
 
-  // ── Cancel ───────────────────────────────────────────────────────────────
   const handleCancel = useCallback(async () => {
     if (!session) return;
     try { await sessionsApi.cancel(session.id); } catch { /* ignore */ }
     navigate('/sessions');
   }, [session, navigate]);
 
-  // ── Session ended (from WS) ───────────────────────────────────────────────
   const handleSessionEnded = useCallback((endedId: number) => {
     navigate(`/sessions/${endedId}/report`, { replace: true });
   }, [navigate]);
-  // ── Loading ──────────────────────────────────────────────────────────────
+
   if (isLoading) {
     return (
       <div className="min-h-[calc(100vh-64px)] flex items-center justify-center bg-[#0a0f1e]">
@@ -404,7 +572,7 @@ const VoiceInterview: React.FC = () => {
       </div>
     );
   }
-  // ── Fetch error ───────────────────────────────────────────────────────────
+
   if (fetchError || !session) {
     return (
       <div className="min-h-[calc(100vh-64px)] flex items-center justify-center bg-[#0a0f1e] px-4">
@@ -417,8 +585,9 @@ const VoiceInterview: React.FC = () => {
       </div>
     );
   }
+
   const room = session.room_template;
-  // ── Completed ─────────────────────────────────────────────────────────────
+
   if (session.status === 'completed') {
     return (
       <div className="min-h-[calc(100vh-64px)] flex items-center justify-center bg-[#0a0f1e] px-4">
@@ -438,7 +607,7 @@ const VoiceInterview: React.FC = () => {
       </div>
     );
   }
-  // ── Cancelled ─────────────────────────────────────────────────────────────
+
   if (session.status === 'cancelled') {
     return (
       <div className="min-h-[calc(100vh-64px)] flex items-center justify-center bg-[#0a0f1e] px-4">
@@ -449,16 +618,13 @@ const VoiceInterview: React.FC = () => {
       </div>
     );
   }
-  // ── Top bar (shared by lobby and live room) ───────────────────────────────
+
   return (
     <div className="min-h-[calc(100vh-64px)] bg-[#0a0f1e] flex flex-col">
+      {/* Sticky top bar */}
       <div className="border-b border-[#1e2d45] bg-[#0a0f1e]/80 backdrop-blur-sm sticky top-16 z-10">
         <div className="max-w-2xl mx-auto px-6 py-4 flex items-center gap-4">
-          <Link
-            to="/sessions"
-            className="text-slate-500 hover:text-slate-300 transition"
-            aria-label="Back to sessions"
-          >
+          <Link to="/sessions" className="text-slate-500 hover:text-slate-300 transition" aria-label="Back">
             <ArrowLeft className="w-5 h-5" />
           </Link>
           <div className="flex-1 min-w-0">
@@ -467,7 +633,7 @@ const VoiceInterview: React.FC = () => {
           </div>
         </div>
       </div>
-      {/* Lobby (scheduled, not yet started) */}
+
       {session.status === 'scheduled' && (
         <Lobby
           session={session}
@@ -477,17 +643,16 @@ const VoiceInterview: React.FC = () => {
           startError={startError}
         />
       )}
-      {/* Live room (in_progress + accessToken obtained) */}
+
       {session.status === 'in_progress' && accessToken && (
         <LiveRoom
           sessionId={session.id}
           accessToken={accessToken}
-          roomTitle={room.title}
           interviewerName={room.interviewer_name}
           onSessionEnded={handleSessionEnded}
         />
       )}
-      {/* in_progress but still waiting for the start response */}
+
       {session.status === 'in_progress' && !accessToken && (
         <div className="flex-1 flex items-center justify-center">
           <Loader2 className="w-6 h-6 animate-spin text-slate-400" />
@@ -496,4 +661,5 @@ const VoiceInterview: React.FC = () => {
     </div>
   );
 };
+
 export default VoiceInterview;

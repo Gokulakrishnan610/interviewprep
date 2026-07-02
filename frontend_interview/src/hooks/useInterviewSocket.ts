@@ -22,6 +22,13 @@
 import { useEffect, useRef, useCallback, useReducer } from 'react';
 import type { WsInboundMessage, WsOutboundMessage } from '../types';
 
+// ── Turn history entry ────────────────────────────────────────────────────────
+export interface TurnHistoryEntry {
+  turnNumber: number;
+  question: string;
+  answer: string;   // populated from transcript_final when the next question arrives
+}
+
 // ── Public state shape ────────────────────────────────────────────────────────
 
 export type WsConnectionStatus =
@@ -57,6 +64,10 @@ export interface InterviewSocketState {
   sessionEnded: boolean;
   /** ID of the session that just ended */
   endedSessionId: number | null;
+  /** Accumulates completed Q&A pairs as the interview progresses */
+  turnHistory: TurnHistoryEntry[];
+  /** Browser TTS is currently speaking a question aloud */
+  isSpeaking: boolean;
 }
 // ── Hook actions / reducer ────────────────────────────────────────────────────
 type Action =
@@ -73,7 +84,10 @@ type Action =
   | { type: 'RECORDING_STOP' }
   | { type: 'MIC_GRANTED' }
   | { type: 'DISCONNECTED' }
-  | { type: 'CLEAR_WARNING' };
+  | { type: 'CLEAR_WARNING' }
+  | { type: 'PUSH_HISTORY'; entry: TurnHistoryEntry }
+  | { type: 'SPEAKING_START' }
+  | { type: 'SPEAKING_STOP' };
 const initialState: InterviewSocketState = {
   connectionStatus: 'idle',
   currentQuestion: null,
@@ -88,6 +102,8 @@ const initialState: InterviewSocketState = {
   fatalError: null,
   sessionEnded: false,
   endedSessionId: null,
+  turnHistory: [],
+  isSpeaking: false,
 };
 function reducer(state: InterviewSocketState, action: Action): InterviewSocketState {
   switch (action.type) {
@@ -112,7 +128,12 @@ function reducer(state: InterviewSocketState, action: Action): InterviewSocketSt
         transcriptPartial: '',
         transcriptFinal: '',
       };
-    case 'TRANSCRIPT_PARTIAL':
+    case 'PUSH_HISTORY':
+      return { ...state, turnHistory: [...state.turnHistory, action.entry] };
+    case 'SPEAKING_START':
+      return { ...state, isSpeaking: true };
+    case 'SPEAKING_STOP':
+      return { ...state, isSpeaking: false };    case 'TRANSCRIPT_PARTIAL':
       return { ...state, transcriptPartial: action.text };
     case 'TRANSCRIPT_FINAL':
       return { ...state, transcriptFinal: action.text, transcriptPartial: '' };
@@ -169,11 +190,51 @@ export function useInterviewSocket(
   const pingTimerRef     = useRef<ReturnType<typeof setInterval> | null>(null);
   const isRecordingRef   = useRef(false);  // shadow of state.isRecording for callbacks
   const sessionEndedRef  = useRef(false);  // avoids stale-closure read in ws.onclose
+  const utteranceRef     = useRef<SpeechSynthesisUtterance | null>(null);
+  // Tracks the last transcript_final so it can be stored in history when the
+  // next question arrives (we don't know the answer until the turn is over)
+  const lastTranscriptRef = useRef<string>('');
+  // Tracks the question text for the current turn so we can archive it
+  const lastQuestionRef   = useRef<string>('');
   // ── Send helper ─────────────────────────────────────────────────────────
   const sendJson = useCallback((msg: WsOutboundMessage) => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
       wsRef.current.send(JSON.stringify(msg));
     }
+  }, []);
+
+  // ── Browser TTS ──────────────────────────────────────────────────────────
+  // Uses the Web Speech API (SpeechSynthesis) to read questions aloud.
+  // Completely optional: if the browser doesn't support it, we just skip.
+  const speakQuestion = useCallback((text: string) => {
+    if (!('speechSynthesis' in window)) return;
+    // Cancel any in-flight utterance before starting a new one
+    window.speechSynthesis.cancel();
+
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.rate   = 0.95;
+    utterance.pitch  = 1.0;
+    utterance.volume = 1.0;
+
+    // Prefer a natural English voice if available
+    const voices = window.speechSynthesis.getVoices();
+    const preferred = voices.find(
+      (v) => v.lang.startsWith('en') && (v.name.includes('Natural') || v.name.includes('Neural') || v.localService)
+    ) ?? voices.find((v) => v.lang.startsWith('en'));
+    if (preferred) utterance.voice = preferred;
+
+    utterance.onstart = () => dispatch({ type: 'SPEAKING_START' });
+    utterance.onend   = () => dispatch({ type: 'SPEAKING_STOP' });
+    utterance.onerror = () => dispatch({ type: 'SPEAKING_STOP' });
+
+    utteranceRef.current = utterance;
+    window.speechSynthesis.speak(utterance);
+  }, []);
+
+  const cancelSpeech = useCallback(() => {
+    if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+    utteranceRef.current = null;
+    dispatch({ type: 'SPEAKING_STOP' });
   }, []);
   // ── Connect ──────────────────────────────────────────────────────────────
   const connect = useCallback(() => {
@@ -226,20 +287,38 @@ export function useInterviewSocket(
         dispatch({ type: 'CONNECTED', turnNumber: msg.turn_number, totalTurns: msg.total_turns });
         break;
       case 'thinking':
+        cancelSpeech();
         dispatch({ type: 'THINKING' });
         break;
-      case 'question':
+      case 'question': {
+        // Before rendering the new question, push the previous turn into history
+        if (msg.turn_number > 0 && lastQuestionRef.current) {
+          dispatch({
+            type: 'PUSH_HISTORY',
+            entry: {
+              turnNumber: msg.turn_number - 1,
+              question: lastQuestionRef.current,
+              answer: lastTranscriptRef.current,
+            },
+          });
+        }
+        lastTranscriptRef.current = '';
+        lastQuestionRef.current   = msg.question_text;
+
         dispatch({
           type: 'QUESTION',
           turnNumber: msg.turn_number,
           questionText: msg.question_text,
           totalTurns: msg.total_turns,
         });
+        setTimeout(() => speakQuestion(msg.question_text), 80);
         break;
+      }
       case 'transcript_partial':
         dispatch({ type: 'TRANSCRIPT_PARTIAL', text: msg.text });
         break;
       case 'transcript_final':
+        lastTranscriptRef.current = msg.text;
         dispatch({ type: 'TRANSCRIPT_FINAL', text: msg.text });
         break;
       case 'turn_saved':
@@ -365,6 +444,7 @@ export function useInterviewSocket(
 
   function cleanup() {
     clearPing();
+    cancelSpeech();
     if (mediaRecRef.current) {
       try { mediaRecRef.current.stop(); } catch { /* ignore */ }
       mediaRecRef.current = null;
@@ -380,6 +460,8 @@ export function useInterviewSocket(
     }
     isRecordingRef.current = false;
     sessionEndedRef.current = false;
+    lastTranscriptRef.current = '';
+    lastQuestionRef.current = '';
   }
 
   // Cleanup on unmount
@@ -395,5 +477,7 @@ export function useInterviewSocket(
     stopRecording,
     endSession,
     clearWarning,
+    speakQuestion,
+    cancelSpeech,
   };
 }
