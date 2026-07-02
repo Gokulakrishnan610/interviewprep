@@ -65,7 +65,8 @@ export interface RubricDimension {
 
 // ── Sessions ──────────────────────────────────────────────────────────────────
 
-export type SessionStatus = 'created' | 'active' | 'completed' | 'failed';
+// Match backend model: scheduled → in_progress → completed | cancelled
+export type SessionStatus = 'scheduled' | 'in_progress' | 'completed' | 'cancelled';
 
 export interface InterviewTurn {
   id: number;

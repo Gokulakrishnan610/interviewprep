@@ -1,272 +1,222 @@
-import React, { useState } from 'react';
-import { Link } from 'react-router-dom';
-import { 
-  Search, 
-  Filter, 
-  Clock, 
-  Target, 
-  Users,
-  Star,
-  Play
+import React, { useEffect, useState } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
+import {
+  Calendar, Clock, ChevronRight, Loader2, AlertCircle,
+  CheckCircle2, XCircle, PlayCircle, TimerIcon, Plus,
 } from 'lucide-react';
+import { sessionsApi } from '../api/sessions';
+import type { InterviewSessionSummary, SessionStatus } from '../types';
 
-const InterviewSessions: React.FC = () => {
-  const [searchTerm, setSearchTerm] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState('all');
-  const [selectedDifficulty, setSelectedDifficulty] = useState('all');
+// ── Helpers ───────────────────────────────────────────────────────────────────
 
-  const categories = [
-    { id: 'all', name: 'All Categories' },
-    { id: 'technical', name: 'Technical' },
-    { id: 'behavioral', name: 'Behavioral' },
-    { id: 'system-design', name: 'System Design' },
-    { id: 'coding', name: 'Coding' },
-  ];
+const STATUS_CONFIG: Record<SessionStatus, {
+  label: string;
+  icon: React.FC<{ className?: string }>;
+  style: string;
+}> = {
+  scheduled:   { label: 'Scheduled',   icon: TimerIcon,    style: 'bg-blue-500/15 text-blue-300' },
+  in_progress: { label: 'In Progress', icon: PlayCircle,   style: 'bg-amber-500/15 text-amber-300' },
+  completed:   { label: 'Completed',   icon: CheckCircle2, style: 'bg-emerald-500/15 text-emerald-300' },
+  cancelled:   { label: 'Cancelled',   icon: XCircle,      style: 'bg-slate-600/40 text-slate-400' },
+};
 
-  const difficulties = [
-    { id: 'all', name: 'All Levels' },
-    { id: 'beginner', name: 'Beginner' },
-    { id: 'intermediate', name: 'Intermediate' },
-    { id: 'advanced', name: 'Advanced' },
-  ];
+const DIFFICULTY_STYLE: Record<string, string> = {
+  beginner:     'bg-emerald-500/15 text-emerald-300',
+  intermediate: 'bg-amber-500/15 text-amber-300',
+  advanced:     'bg-rose-500/15 text-rose-300',
+};
 
-  const sessions = [
-    {
-      id: '1',
-      title: 'Software Engineering Mock Interview',
-      description: 'Comprehensive technical interview covering algorithms, data structures, and system design.',
-      category: 'technical',
-      difficulty: 'intermediate',
-      duration: 45,
-      questions: 12,
-      rating: 4.8,
-      participants: 1247,
-      isPopular: true,
-    },
-    {
-      id: '2',
-      title: 'Behavioral Interview Practice',
-      description: 'Practice common behavioral questions and learn the STAR method.',
-      category: 'behavioral',
-      difficulty: 'beginner',
-      duration: 30,
-      questions: 8,
-      rating: 4.6,
-      participants: 892,
-      isPopular: false,
-    },
-    {
-      id: '3',
-      title: 'System Design Deep Dive',
-      description: 'Advanced system design questions for senior engineering roles.',
-      category: 'system-design',
-      difficulty: 'advanced',
-      duration: 60,
-      questions: 6,
-      rating: 4.9,
-      participants: 567,
-      isPopular: true,
-    },
-    {
-      id: '4',
-      title: 'Coding Interview Prep',
-      description: 'Practice coding problems with real-time feedback and solutions.',
-      category: 'coding',
-      difficulty: 'intermediate',
-      duration: 40,
-      questions: 10,
-      rating: 4.7,
-      participants: 1034,
-      isPopular: false,
-    },
-    {
-      id: '5',
-      title: 'Frontend Development Interview',
-      description: 'JavaScript, React, and frontend architecture questions.',
-      category: 'technical',
-      difficulty: 'intermediate',
-      duration: 35,
-      questions: 9,
-      rating: 4.5,
-      participants: 756,
-      isPopular: false,
-    },
-    {
-      id: '6',
-      title: 'Leadership & Management',
-      description: 'Questions for engineering leadership and management roles.',
-      category: 'behavioral',
-      difficulty: 'advanced',
-      duration: 50,
-      questions: 7,
-      rating: 4.4,
-      participants: 423,
-      isPopular: false,
-    },
-  ];
-
-  const filteredSessions = sessions.filter(session => {
-    const matchesSearch = session.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         session.description.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesCategory = selectedCategory === 'all' || session.category === selectedCategory;
-    const matchesDifficulty = selectedDifficulty === 'all' || session.difficulty === selectedDifficulty;
-    
-    return matchesSearch && matchesCategory && matchesDifficulty;
+function formatDate(iso: string | null): string {
+  if (!iso) return '—';
+  return new Date(iso).toLocaleDateString(undefined, {
+    month: 'short', day: 'numeric', year: 'numeric',
   });
+}
 
-  const getDifficultyColor = (difficulty: string) => {
-    switch (difficulty) {
-      case 'beginner': return 'bg-green-100 text-green-800';
-      case 'intermediate': return 'bg-yellow-100 text-yellow-800';
-      case 'advanced': return 'bg-red-100 text-red-800';
-      default: return 'bg-gray-100 text-gray-800';
+function formatDuration(startIso: string | null, endIso: string | null): string {
+  if (!startIso || !endIso) return '—';
+  const mins = Math.round((new Date(endIso).getTime() - new Date(startIso).getTime()) / 60000);
+  if (mins < 60) return `${mins} min`;
+  return `${Math.floor(mins / 60)}h ${mins % 60}m`;
+}
+
+// ── Session row ───────────────────────────────────────────────────────────────
+
+const SessionRow: React.FC<{ session: InterviewSessionSummary }> = ({ session }) => {
+  const navigate = useNavigate();
+  const cfg  = STATUS_CONFIG[session.status] ?? STATUS_CONFIG.scheduled;
+  const Icon = cfg.icon;
+
+  const handleClick = () => {
+    if (session.status === 'scheduled' || session.status === 'in_progress') {
+      navigate(`/sessions/${session.id}`);
+    } else if (session.status === 'completed') {
+      navigate(`/sessions/${session.id}/report`);
     }
   };
 
-  const getCategoryIcon = (category: string) => {
-    switch (category) {
-      case 'technical': return '💻';
-      case 'behavioral': return '🤝';
-      case 'system-design': return '🏗️';
-      case 'coding': return '⌨️';
-      default: return '📋';
-    }
-  };
+  const isClickable = session.status !== 'cancelled';
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-      {/* Header */}
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900">Interview Sessions</h1>
-        <p className="text-gray-600 mt-2">Choose from our curated collection of mock interviews</p>
+    <div
+      onClick={isClickable ? handleClick : undefined}
+      className={`flex items-center gap-4 p-4 rounded-xl border border-[#1e2d45] bg-[#111827]
+        transition-all
+        ${isClickable
+          ? 'hover:border-indigo-500/30 hover:bg-[#1a2235] cursor-pointer'
+          : 'opacity-60 cursor-default'
+        }`}
+    >
+      {/* Status icon */}
+      <div className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${cfg.style}`}>
+        <Icon className="w-4.5 h-4.5 w-[18px] h-[18px]" />
       </div>
 
-      {/* Filters */}
-      <div className="bg-white rounded-lg shadow p-6 mb-8">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          {/* Search */}
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-            <input
-              type="text"
-              placeholder="Search sessions..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-            />
-          </div>
-
-          {/* Category Filter */}
-          <select
-            value={selectedCategory}
-            onChange={(e) => setSelectedCategory(e.target.value)}
-            className="px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-          >
-            {categories.map(category => (
-              <option key={category.id} value={category.id}>
-                {category.name}
-              </option>
-            ))}
-          </select>
-
-          {/* Difficulty Filter */}
-          <select
-            value={selectedDifficulty}
-            onChange={(e) => setSelectedDifficulty(e.target.value)}
-            className="px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-          >
-            {difficulties.map(difficulty => (
-              <option key={difficulty.id} value={difficulty.id}>
-                {difficulty.name}
-              </option>
-            ))}
-          </select>
-
-          {/* Clear Filters */}
-          <button
-            onClick={() => {
-              setSearchTerm('');
-              setSelectedCategory('all');
-              setSelectedDifficulty('all');
-            }}
-            className="px-4 py-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-md transition-colors"
-          >
-            Clear Filters
-          </button>
+      {/* Room info */}
+      <div className="flex-1 min-w-0">
+        <p className="font-medium text-slate-100 truncate text-sm">
+          {session.room_template.title}
+        </p>
+        <div className="flex items-center flex-wrap gap-x-3 gap-y-0.5 mt-0.5">
+          <span className="text-xs text-slate-500">
+            {session.room_template.round_type_display}
+          </span>
+          <span className={`badge text-[11px] ${DIFFICULTY_STYLE[session.room_template.difficulty]}`}>
+            {session.room_template.difficulty_display}
+          </span>
+          {session.room_template.company && (
+            <span className="text-xs text-slate-500">{session.room_template.company}</span>
+          )}
         </div>
       </div>
 
-      {/* Sessions Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {filteredSessions.map((session) => (
-          <div key={session.id} className="bg-white rounded-lg shadow hover:shadow-lg transition-shadow">
-            <div className="p-6">
-              {/* Header */}
-              <div className="flex items-start justify-between mb-4">
-                <div className="flex items-center">
-                  <span className="text-2xl mr-2">{getCategoryIcon(session.category)}</span>
-                  <div>
-                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getDifficultyColor(session.difficulty)}`}>
-                      {session.difficulty.charAt(0).toUpperCase() + session.difficulty.slice(1)}
-                    </span>
-                    {session.isPopular && (
-                      <span className="ml-2 inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-orange-100 text-orange-800">
-                        Popular
-                      </span>
-                    )}
-                  </div>
-                </div>
-                <div className="flex items-center text-sm text-gray-500">
-                  <Star className="w-4 h-4 text-yellow-400 mr-1" />
-                  {session.rating}
-                </div>
-              </div>
-
-              {/* Title and Description */}
-              <h3 className="text-lg font-semibold text-gray-900 mb-2">{session.title}</h3>
-              <p className="text-gray-600 text-sm mb-4 line-clamp-3">{session.description}</p>
-
-              {/* Stats */}
-              <div className="flex items-center justify-between text-sm text-gray-500 mb-4">
-                <div className="flex items-center">
-                  <Clock className="w-4 h-4 mr-1" />
-                  {session.duration} min
-                </div>
-                <div className="flex items-center">
-                  <Target className="w-4 h-4 mr-1" />
-                  {session.questions} questions
-                </div>
-                <div className="flex items-center">
-                  <Users className="w-4 h-4 mr-1" />
-                  {session.participants}
-                </div>
-              </div>
-
-              {/* Action Button */}
-              <Link
-                to={`/interview/${session.id}`}
-                className="w-full bg-primary-600 text-white py-2 px-4 rounded-md text-sm font-medium hover:bg-primary-700 transition-colors flex items-center justify-center"
-              >
-                <Play className="w-4 h-4 mr-2" />
-                Start Session
-              </Link>
-            </div>
-          </div>
-        ))}
+      {/* Meta */}
+      <div className="hidden sm:flex flex-col items-end gap-0.5 shrink-0 text-xs text-slate-500">
+        <span className="flex items-center gap-1">
+          <Calendar className="w-3.5 h-3.5" />
+          {formatDate(session.created_at)}
+        </span>
+        {session.ended_at && (
+          <span className="flex items-center gap-1">
+            <Clock className="w-3.5 h-3.5" />
+            {formatDuration(session.started_at, session.ended_at)}
+          </span>
+        )}
       </div>
 
-      {/* Empty State */}
-      {filteredSessions.length === 0 && (
-        <div className="text-center py-12">
-          <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
-            <Search className="w-8 h-8 text-gray-400" />
-          </div>
-          <h3 className="text-lg font-medium text-gray-900 mb-2">No sessions found</h3>
-          <p className="text-gray-600">Try adjusting your search or filters</p>
-        </div>
+      {/* Score or status badge */}
+      <div className="shrink-0 flex flex-col items-end gap-1.5">
+        <span className={`badge ${cfg.style} text-xs`}>{cfg.label}</span>
+        {session.overall_score !== null && session.status === 'completed' && (
+          <span className="text-sm font-bold text-indigo-300">
+            {session.overall_score.toFixed(1)}<span className="text-xs text-slate-500">/10</span>
+          </span>
+        )}
+      </div>
+
+      {isClickable && (
+        <ChevronRight className="w-4 h-4 text-slate-600 shrink-0" />
       )}
     </div>
   );
 };
 
-export default InterviewSessions; 
+// ── Page ──────────────────────────────────────────────────────────────────────
+
+const InterviewSessions: React.FC = () => {
+  const navigate = useNavigate();
+  const [sessions, setSessions]   = useState<InterviewSessionSummary[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError]         = useState<string | null>(null);
+
+  useEffect(() => {
+    sessionsApi
+      .list()
+      .then(setSessions)
+      .catch((err) => {
+        setError(err.response?.data?.detail || 'Failed to load sessions.');
+      })
+      .finally(() => setIsLoading(false));
+  }, []);
+
+  // Split into active (resumable) and past
+  const active = sessions.filter((s) =>
+    s.status === 'scheduled' || s.status === 'in_progress'
+  );
+  const past = sessions.filter((s) =>
+    s.status === 'completed' || s.status === 'cancelled'
+  );
+
+  return (
+    <div className="page-container">
+      {/* Header */}
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <h1 className="text-2xl font-bold text-slate-100">My Sessions</h1>
+          <p className="text-slate-400 text-sm mt-1">Your interview history and active sessions.</p>
+        </div>
+        <button
+          onClick={() => navigate('/rooms')}
+          className="btn-primary"
+        >
+          <Plus className="w-4 h-4" />
+          New session
+        </button>
+      </div>
+
+      {/* Loading */}
+      {isLoading && (
+        <div className="flex items-center justify-center py-24 gap-3 text-slate-400">
+          <Loader2 className="w-5 h-5 animate-spin" />
+          Loading sessions…
+        </div>
+      )}
+
+      {/* Error */}
+      {!isLoading && error && (
+        <div className="flex flex-col items-center gap-3 py-20 text-slate-400">
+          <AlertCircle className="w-7 h-7 text-red-400" />
+          <p className="text-sm">{error}</p>
+        </div>
+      )}
+
+      {/* Empty state */}
+      {!isLoading && !error && sessions.length === 0 && (
+        <div className="flex flex-col items-center justify-center py-20 gap-4 text-slate-500">
+          <Calendar className="w-10 h-10" />
+          <p className="text-base font-medium text-slate-400">No sessions yet</p>
+          <p className="text-sm">Pick a room and start your first interview.</p>
+          <Link to="/rooms" className="btn-primary mt-2">
+            Browse rooms
+          </Link>
+        </div>
+      )}
+
+      {/* Active / resumable sessions */}
+      {!isLoading && !error && active.length > 0 && (
+        <section className="mb-8">
+          <h2 className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-3">
+            Active
+          </h2>
+          <div className="flex flex-col gap-2">
+            {active.map((s) => <SessionRow key={s.id} session={s} />)}
+          </div>
+        </section>
+      )}
+
+      {/* Past sessions */}
+      {!isLoading && !error && past.length > 0 && (
+        <section>
+          <h2 className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-3">
+            History
+          </h2>
+          <div className="flex flex-col gap-2">
+            {past.map((s) => <SessionRow key={s.id} session={s} />)}
+          </div>
+        </section>
+      )}
+    </div>
+  );
+};
+
+export default InterviewSessions;

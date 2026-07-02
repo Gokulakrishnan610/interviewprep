@@ -6,8 +6,9 @@ import type {
 } from '../types';
 
 export const sessionsApi = {
-  create: async (roomTemplateId: number): Promise<SessionStartResponse> => {
-    const { data } = await client.post<SessionStartResponse>('/sessions', {
+  // POST /sessions → returns the created session (not a start response)
+  create: async (roomTemplateId: number): Promise<InterviewSessionDetail> => {
+    const { data } = await client.post<InterviewSessionDetail>('/sessions', {
       room_template_id: roomTemplateId,
     });
     return data;
@@ -23,8 +24,14 @@ export const sessionsApi = {
     return data;
   },
 
-  getReport: async (id: number): Promise<InterviewSessionDetail> => {
-    const { data } = await client.get<InterviewSessionDetail>(`/sessions/${id}/report`);
+  // POST /sessions/{id}/start → issues LiveKit token and transitions to in_progress
+  start: async (id: number): Promise<SessionStartResponse> => {
+    const { data } = await client.post<SessionStartResponse>(`/sessions/${id}/start`);
+    return data;
+  },
+
+  cancel: async (id: number): Promise<InterviewSessionDetail> => {
+    const { data } = await client.post<InterviewSessionDetail>(`/sessions/${id}/cancel`);
     return data;
   },
 };
