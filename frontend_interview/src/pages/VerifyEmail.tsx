@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useSearchParams, Link, useNavigate } from 'react-router-dom';
 import { authApi } from '../api/auth';
+import { getErrorMessage } from '../api/client';
 import { useAuth } from '../context/AuthContext';
 import { CheckCircle, XCircle, Mail, Loader2, Zap } from 'lucide-react';
 
@@ -41,11 +42,9 @@ const VerifyEmail: React.FC = () => {
         }
         // If no tokens (e.g. "already verified"), just show the success UI
       })
-      .catch((err) => {
+      .catch((err: unknown) => {
         setStatus('error');
-        setErrorMessage(
-          err.response?.data?.detail || 'This link is invalid or has expired.'
-        );
+        setErrorMessage(getErrorMessage(err, 'This link is invalid or has expired.'));
       });
   }, [token]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -56,10 +55,9 @@ const VerifyEmail: React.FC = () => {
     try {
       await authApi.resendVerification(resendEmail);
       setResendMessage('Verification email sent — check your inbox.');
-    } catch (err: any) {
-      // Backend returns a neutral message regardless; surface it
+    } catch (err: unknown) {
       setResendMessage(
-        err.response?.data?.detail || 'If that email is registered, a link has been sent.'
+        getErrorMessage(err, 'If that email is registered, a link has been sent.')
       );
     } finally {
       setIsResending(false);

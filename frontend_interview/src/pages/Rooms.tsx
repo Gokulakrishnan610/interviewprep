@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { roomsApi } from '../api/rooms';
 import { sessionsApi } from '../api/sessions';
+import { getErrorMessage } from '../api/client';
 import type { RoomTemplate } from '../types';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -226,10 +227,8 @@ const Rooms: React.FC = () => {
     roomsApi
       .list()
       .then(setRooms)
-      .catch((err) => {
-        setFetchError(
-          err.response?.data?.detail || 'Failed to load rooms. Please try again.'
-        );
+      .catch((err: unknown) => {
+        setFetchError(getErrorMessage(err, 'Failed to load rooms. Please try again.'));
       })
       .finally(() => setIsLoading(false));
   }, []);
@@ -270,10 +269,8 @@ const Rooms: React.FC = () => {
       const session = await sessionsApi.create(selected.id);
       // 2. Navigate to the interview room with the real session id
       navigate(`/sessions/${session.id}`);
-    } catch (err: any) {
-      setStartError(
-        err.response?.data?.detail || 'Could not create session. Please try again.'
-      );
+    } catch (err: unknown) {
+      setStartError(getErrorMessage(err, 'Could not create session. Please try again.'));
     } finally {
       setIsStarting(false);
     }
@@ -362,9 +359,9 @@ const Rooms: React.FC = () => {
                 roomsApi
                   .list()
                   .then(setRooms)
-                  .catch((err) => {
+                  .catch((err: unknown) => {
                     setFetchError(
-                      err.response?.data?.detail || 'Failed to load rooms. Please try again.'
+                      getErrorMessage(err, 'Failed to load rooms. Please try again.')
                     );
                   })
                   .finally(() => setIsLoading(false));

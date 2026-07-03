@@ -59,16 +59,6 @@ body {
 ::-webkit-scrollbar-thumb  { background: var(--color-border-2); border-radius: 3px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--color-text-3); }
 
-/* ── Tailwind primary alias (used in existing components) ─────────────────── */
-.text-primary-600    { color: var(--color-brand); }
-.bg-primary-600      { background-color: var(--color-brand); }
-.hover\:bg-primary-700:hover { background-color: var(--color-brand-h); }
-.hover\:text-primary-500:hover { color: var(--color-brand-2); }
-.focus\:ring-primary-500:focus { --tw-ring-color: var(--color-brand); }
-.focus\:border-primary-500:focus { border-color: var(--color-brand); }
-.ring-primary-500    { --tw-ring-color: var(--color-brand); }
-.border-primary-500  { border-color: var(--color-brand); }
-
 /* ── Component helpers ────────────────────────────────────────────────────── */
 @layer components {
   /* Card */

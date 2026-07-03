@@ -51,18 +51,6 @@ export interface RoomTemplate {
   is_active: boolean;
 }
 
-export interface RoomTemplateDetail extends RoomTemplate {
-  interviewer_persona: string;
-  rubric_dimensions: RubricDimension[];
-  created_at: string;
-}
-
-export interface RubricDimension {
-  name: string;
-  weight?: number;
-  description?: string;
-}
-
 // ── Sessions ──────────────────────────────────────────────────────────────────
 
 // Match backend model: scheduled → in_progress → completed | cancelled

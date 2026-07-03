@@ -106,4 +106,16 @@ client.interceptors.response.use(
   }
 );
 
+/**
+ * Extract a user-facing error message from an unknown catch value.
+ * Prefers the FastAPI `detail` field, falls back to the generic message.
+ */
+export function getErrorMessage(err: unknown, fallback = 'An error occurred.'): string {
+  if (axios.isAxiosError(err)) {
+    return err.response?.data?.detail ?? err.response?.data?.error ?? err.message ?? fallback;
+  }
+  if (err instanceof Error) return err.message;
+  return fallback;
+}
+
 export default client;

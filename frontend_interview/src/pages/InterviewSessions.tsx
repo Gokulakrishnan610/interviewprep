@@ -5,6 +5,7 @@ import {
   CheckCircle2, XCircle, PlayCircle, TimerIcon, Plus,
 } from 'lucide-react';
 import { sessionsApi } from '../api/sessions';
+import { getErrorMessage } from '../api/client';
 import type { InterviewSessionSummary, SessionStatus } from '../types';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -133,8 +134,8 @@ const InterviewSessions: React.FC = () => {
     sessionsApi
       .list()
       .then(setSessions)
-      .catch((err) => {
-        setError(err.response?.data?.detail || 'Failed to load sessions.');
+      .catch((err: unknown) => {
+        setError(getErrorMessage(err, 'Failed to load sessions.'));
       })
       .finally(() => setIsLoading(false));
   }, []);

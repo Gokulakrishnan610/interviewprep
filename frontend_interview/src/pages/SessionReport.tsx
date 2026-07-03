@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import {
   ArrowLeft, Loader2, AlertCircle, CheckCircle2,
@@ -6,6 +6,7 @@ import {
   BarChart3, RefreshCw, ChevronDown, ChevronUp,
   MessageSquare,
 } from 'lucide-react';
+import axios from 'axios';
 import { sessionsApi } from '../api/sessions';
 import type {
   FeedbackReport,
@@ -172,11 +173,10 @@ const TurnCard: React.FC<{ turn: InterviewSessionDetail['turns'][number]; index:
 interface PendingScreenProps {
   status: ReportGenerationStatus;
   error: string | null;
-  sessionId: number;
   onRetry: () => void;
 }
 
-const PendingScreen: React.FC<PendingScreenProps> = ({ status, error, sessionId, onRetry }) => (
+const PendingScreen: React.FC<PendingScreenProps> = ({ status, error, onRetry }) => (
   <div className="page-container flex flex-col items-center justify-center min-h-[60vh] gap-6 text-center">
     {status === 'failed' ? (
       <>
@@ -379,34 +379,38 @@ const SessionReport: React.FC = () => {
   const [fetchError, setFetchError] = useState<string | null>(null);
 
   const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // Stable ref so the setInterval callback always calls the latest pollStatus
+  const pollStatusRef = useRef<((id: number) => Promise<void>) | null>(null);
 
   // ── Helpers ────────────────────────────────────────────────────────────────
 
-  const stopPolling = () => {
+  const stopPolling = useCallback(() => {
     if (pollTimerRef.current) {
       clearInterval(pollTimerRef.current);
       pollTimerRef.current = null;
     }
-  };
+  }, []);
 
-  const tryFetchReport = async (id: number): Promise<boolean> => {
+  const tryFetchReport = useCallback(async (id: number): Promise<boolean> => {
     try {
       const r = await sessionsApi.getReport(id);
       setReport(r);
       setGenStatus('done');
       stopPolling();
       return true;
-    } catch (err: any) {
-      // 404 = not ready yet — that's expected
-      if (err.response?.status === 404) return false;
-      // Any other error is real
-      setFetchError(err.response?.data?.detail || 'Failed to load report.');
+    } catch (err: unknown) {
+      if (axios.isAxiosError(err)) {
+        if (err.response?.status === 404) return false; // not ready yet
+        setFetchError(err.response?.data?.detail || 'Failed to load report.');
+      } else {
+        setFetchError('Failed to load report.');
+      }
       stopPolling();
       return false;
     }
-  };
+  }, [stopPolling]);
 
-  const pollStatus = async (id: number) => {
+  const pollStatus = useCallback(async (id: number) => {
     try {
       const s = await sessionsApi.getReportStatus(id);
       setGenStatus(s.status);
@@ -418,9 +422,14 @@ const SessionReport: React.FC = () => {
         stopPolling();
       }
     } catch {
-      // Silently ignore transient poll errors
+      // Silently ignore transient poll errors — interval will retry
     }
-  };
+  }, [stopPolling, tryFetchReport]);
+
+  // Keep the ref in sync so the interval always uses the latest version
+  useEffect(() => {
+    pollStatusRef.current = pollStatus;
+  }, [pollStatus]);
 
   // ── Load session + report ─────────────────────────────────────────────────
   useEffect(() => {
@@ -432,15 +441,12 @@ const SessionReport: React.FC = () => {
 
     const init = async () => {
       try {
-        // Load session detail (for turns + room template)
         const s = await sessionsApi.getById(numericId);
         setSession(s);
 
-        // Try to get report immediately
         const gotReport = await tryFetchReport(numericId);
 
         if (!gotReport) {
-          // Not ready — start polling status
           const s2 = await sessionsApi.getReportStatus(numericId);
           setGenStatus(s2.status);
 
@@ -449,12 +455,18 @@ const SessionReport: React.FC = () => {
           } else if (s2.status === 'failed') {
             setGenError(s2.error || null);
           } else {
-            // Poll every 3 seconds
-            pollTimerRef.current = setInterval(() => pollStatus(numericId), 3000);
+            // Use the stable ref so the interval always calls the latest closure
+            pollTimerRef.current = setInterval(
+              () => pollStatusRef.current?.(numericId),
+              3000,
+            );
           }
         }
-      } catch (err: any) {
-        setFetchError(err.response?.data?.detail || 'Session not found.');
+      } catch (err: unknown) {
+        const detail = axios.isAxiosError(err)
+          ? err.response?.data?.detail
+          : undefined;
+        setFetchError(detail || 'Session not found.');
       } finally {
         setIsLoading(false);
       }
@@ -462,20 +474,23 @@ const SessionReport: React.FC = () => {
 
     init();
     return () => stopPolling();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [numericId]);
+  }, [numericId, tryFetchReport, stopPolling]);
 
   const handleRetry = async () => {
     if (!numericId) return;
     setGenStatus('pending');
     setGenError(null);
     try {
-      // Call the generate endpoint which re-triggers the background task if needed
       await sessionsApi.generateReport(numericId);
-      // Resume polling for completion
-      pollTimerRef.current = setInterval(() => pollStatus(numericId), 3000);
+      pollTimerRef.current = setInterval(
+        () => pollStatusRef.current?.(numericId),
+        3000,
+      );
     } catch (err: unknown) {
-      setGenError((err as any)?.response?.data?.detail || 'Could not trigger report generation.');
+      const detail = axios.isAxiosError(err)
+        ? err.response?.data?.detail
+        : undefined;
+      setGenError(detail || 'Could not trigger report generation.');
       setGenStatus('failed');
     }
   };
@@ -511,7 +526,6 @@ const SessionReport: React.FC = () => {
         <PendingScreen
           status={genStatus}
           error={genError}
-          sessionId={session.id}
           onRetry={handleRetry}
         />
       </div>

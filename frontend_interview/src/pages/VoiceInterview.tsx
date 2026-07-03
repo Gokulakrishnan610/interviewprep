@@ -6,7 +6,7 @@ import {
   Volume2, VolumeX,
 } from 'lucide-react';
 import { sessionsApi } from '../api/sessions';
-import { tokenStorage } from '../api/client';
+import { tokenStorage, getErrorMessage } from '../api/client';
 import { useInterviewSocket } from '../hooks/useInterviewSocket';
 import type { TurnHistoryEntry } from '../hooks/useInterviewSocket';
 import type { InterviewSessionDetail, SessionStartResponse } from '../types';
@@ -280,12 +280,10 @@ const LiveRoom: React.FC<LiveRoomProps> = ({
   useEffect(() => {
     const init = async () => {
       connect();
-      // Request mic and capture the stream reference for the visualiser
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
-        setMicStream(stream);
-      } catch { /* handled by the hook's warning */ }
-      requestMic();
+      // requestMic acquires the stream once and stores it in the hook's ref.
+      // We capture the returned stream here for the AudioVisualiser.
+      const stream = await requestMic();
+      if (stream) setMicStream(stream);
     };
     init();
   }, [connect, requestMic]);
@@ -533,7 +531,7 @@ const VoiceInterview: React.FC = () => {
         setSession(s);
         if (s.status === 'in_progress') setAccessToken(tokenStorage.getAccess());
       })
-      .catch((err) => setFetchError(err.response?.data?.detail || 'Session not found.'))
+      .catch((err: unknown) => setFetchError(getErrorMessage(err, 'Session not found.')))
       .finally(() => setIsLoading(false));
   }, [numericId]);
 
@@ -545,8 +543,8 @@ const VoiceInterview: React.FC = () => {
       const data: SessionStartResponse = await sessionsApi.start(session.id);
       setSession(data.session);
       setAccessToken(tokenStorage.getAccess());
-    } catch (err: any) {
-      setStartError(err.response?.data?.detail || 'Could not start interview. Please try again.');
+    } catch (err: unknown) {
+      setStartError(getErrorMessage(err, 'Could not start interview. Please try again.'));
     } finally {
       setIsStarting(false);
     }

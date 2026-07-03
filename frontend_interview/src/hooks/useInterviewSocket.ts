@@ -344,15 +344,15 @@ export function useInterviewSocket(
 
   // ── Mic / recording ──────────────────────────────────────────────────────
 
-  const requestMic = useCallback(async (): Promise<boolean> => {
+  const requestMic = useCallback(async (): Promise<MediaStream | null> => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
       streamRef.current = stream;
       dispatch({ type: 'MIC_GRANTED' });
-      return true;
+      return stream;
     } catch {
       dispatch({ type: 'WARNING', message: 'Microphone access denied. Please allow microphone and refresh.' });
-      return false;
+      return null;
     }
   }, []);
 

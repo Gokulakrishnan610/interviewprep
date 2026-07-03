@@ -8,7 +8,7 @@ import React, {
 } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { authApi } from '../api/auth';
-import { tokenStorage, SESSION_EXPIRED_EVENT } from '../api/client';
+import { tokenStorage, SESSION_EXPIRED_EVENT, getErrorMessage } from '../api/client';
 import type { User } from '../types';
 
 // ── State ─────────────────────────────────────────────────────────────────────
@@ -169,12 +169,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       const user = await authApi.getMe();
       dispatch({ type: 'AUTH_SUCCESS', payload: user });
       return true;
-    } catch (err: any) {
-      const detail: string =
-        err.response?.data?.detail ||
-        err.response?.data?.error ||
-        err.message ||
-        'Login failed';
+    } catch (err: unknown) {
+      const detail = getErrorMessage(err, 'Login failed');
 
       // Detect the backend's specific "email not verified" message
       const isUnverified =
@@ -216,13 +212,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       const user = await authApi.getMe();
       dispatch({ type: 'AUTH_SUCCESS', payload: user });
       return { success: true, requiresVerification: false };
-    } catch (err: any) {
-      const message =
-        err.response?.data?.detail ||
-        err.response?.data?.error ||
-        err.message ||
-        'Registration failed';
-      dispatch({ type: 'AUTH_FAILURE', payload: message });
+    } catch (err: unknown) {
+      dispatch({ type: 'AUTH_FAILURE', payload: getErrorMessage(err, 'Registration failed') });
       tokenStorage.clear();
       return { success: false, requiresVerification: false };
     }
